@@ -1,0 +1,284 @@
+/* @settings
+
+name: Tasks Calendar
+description: Customize the appearance of the Tasks Calendar.
+
+section: General
+
+setting: tasks-calendar-font-size
+  name: Event Font Size
+  description: Font size for calendar event text.
+  type: variable-number-slider
+  default: var(--font-ui-small)
+  format: px
+  min: 8
+  max: 20
+  step: 1
+
+setting: tasks-calendar-event-padding
+  name: Event Padding
+  description: Padding around calendar event text.
+  type: variable-text
+  default: "1px 3px"
+
+setting: tasks-calendar-rtl-enabled
+  name: Enable Right-to-Left (RTL) Text
+  description: Display task text with right-to-left directionality (e.g., for Hebrew, Arabic).
+  type: variable-toggle
+  default: 0
+  variable: tasks-calendar-rtl-enabled
+
+section: Colors
+
+setting: tasks-calendar-today-bg
+  name: "Today" Background Color
+  description: Background color for the current day cell.
+  type: variable-color
+  default: var(--background-secondary-alt)
+  format: hex
+
+section: Task Status Styles
+
+setting: tasks-calendar-event-text-main
+  name: Default Event Text Color
+  description: Default text color for tasks (applied to all unless overridden by completed style).
+  type: variable-color
+  default: "#404040"
+  format: hex
+
+setting: tasks-calendar-incomplete-bg
+  name: Incomplete Task Background
+  type: variable-color
+  default: "#dae5f0"
+  format: hex
+setting: tasks-calendar-incomplete-border
+  name: Incomplete Task Border
+  type: variable-color
+  default: var(--background-modifier-border)
+  format: hex
+
+setting: tasks-calendar-inprogress-bg
+  name: In-Progress Task Background
+  type: variable-color
+  default: "#FAFAD2"
+  format: hex
+setting: tasks-calendar-inprogress-border
+  name: In-Progress Task Border
+  type: variable-color
+  default: "#E6E6AA"
+  format: hex
+
+setting: tasks-calendar-completed-bg
+  name: Completed Task Background
+  type: variable-color
+  default: "#DFF0D8"
+  format: hex
+setting: tasks-calendar-completed-border
+  name: Completed Task Border
+  type: variable-color
+  default: "#C8E6C9"
+  format: hex
+
+setting: tasks-calendar-completed-opacity
+  name: Completed Task Opacity
+  description: Opacity for completed task events (0 to 1).
+  type: variable-number-slider
+  default: 0.7
+  min: 0.1
+  max: 1
+  step: 0.1
+
+setting: tasks-calendar-completed-text-decoration
+  name: Completed Task Text Style
+  description: Text decoration for completed tasks (e.g., line-through, none).
+  type: variable-select
+  default: line-through
+  options:
+    - none
+    - line-through
+    - underline
+
+*/
+
+/* Root variables for Style Settings */
+:root {
+  /* General */
+  --tasks-calendar-font-size: var(--font-ui-small);
+  --tasks-calendar-event-padding: 1px 3px;
+  --tasks-calendar-today-bg: var(--background-secondary-alt);
+  --tasks-calendar-event-text-main: #404040; /* Default Dark Gray */
+  
+  /* Incomplete Tasks */
+  --tasks-calendar-incomplete-bg: #dae5f0; /* Set to user specified hex */
+  --tasks-calendar-incomplete-border: var(--background-modifier-border);
+
+  /* In-Progress Tasks */
+  --tasks-calendar-inprogress-bg: #FAFAD2; /* LightGoldenrodYellow */
+  --tasks-calendar-inprogress-border: #E6E6AA; /* Darker shade */
+
+  /* Completed Tasks */
+  --tasks-calendar-completed-bg: #DFF0D8; /* Light green pastel */
+  --tasks-calendar-completed-border: #C8E6C9; /* Darker shade */
+  --tasks-calendar-completed-opacity: 0.7;
+  --tasks-calendar-completed-text-decoration: line-through;
+}
+
+/* Basic theme integration for FullCalendar */
+.tasks-calendar-container .fc {
+  /* Use theme variables for general colors */
+  --fc-border-color: var(--background-modifier-border);
+  --fc-daygrid-event-dot-width: 8px;
+  --fc-list-event-dot-width: 8px;
+  --fc-page-bg-color: var(--background-primary);
+  --fc-neutral-bg-color: var(--background-secondary);
+}
+
+/* Text color for general elements */
+.tasks-calendar-container .fc,
+.tasks-calendar-container .fc .fc-col-header-cell-cushion, /* Day headers (Mon, Tue) */
+.tasks-calendar-container .fc .fc-daygrid-day-number, /* Day numbers */
+.tasks-calendar-container .fc .fc-list-day-text,       /* List view day text */
+.tasks-calendar-container .fc .fc-list-day-side-text,  /* List view day side text */
+.tasks-calendar-container .fc-toolbar-title /* Toolbar title */
+{
+  color: var(--text-normal);
+}
+
+/* Today's background color */
+.tasks-calendar-container .fc .fc-day-today {
+  background-color: var(--tasks-calendar-today-bg);
+}
+
+/* Event styling - Apply base styles */
+/* Increase specificity by adding .fc-daygrid-event / .fc-list-event */
+.tasks-calendar-container .fc-daygrid-event.task-incomplete,
+.tasks-calendar-container .fc-list-event.task-incomplete,
+.tasks-calendar-container .fc-daygrid-event:not(.task-inprogress):not(.task-completed), /* Catch default state */
+.tasks-calendar-container .fc-list-event:not(.task-inprogress):not(.task-completed) /* Catch default state */
+{
+  background-color: var(--tasks-calendar-incomplete-bg);
+  border: 1px solid var(--tasks-calendar-incomplete-border);
+  border-radius: var(--radius-s);
+  padding: 0;
+  margin-bottom: 2px;
+}
+
+/* Inner content base styles */
+/* Increase specificity */
+.tasks-calendar-container .fc-daygrid-event .fc-event-main,
+.tasks-calendar-container .fc-list-event .fc-event-main
+{
+  font-size: var(--tasks-calendar-font-size);
+  padding: var(--tasks-calendar-event-padding); /* Keep original general padding */
+  white-space: normal; /* Ensure wrapping */
+  overflow-wrap: break-word;
+  height: auto; /* Ensure height adjusts */
+  overflow: visible; /* Ensure content visible */
+  text-decoration: none; /* Default no decoration */
+  opacity: 1; /* Default full opacity */
+  position: relative; /* Needed for absolute positioning of pseudo-element */
+  /* Removed padding-top for checkbox above */
+  color: var(--tasks-calendar-event-text-main); /* Apply the new default text color variable */
+}
+
+/* Conditional RTL Styling */
+.tasks-calendar-container.tasks-calendar-rtl-enabled .fc-daygrid-event .fc-event-main,
+.tasks-calendar-container.tasks-calendar-rtl-enabled .fc-list-event .fc-event-main {
+  /* RTL Support */
+  direction: rtl;
+  unicode-bidi: embed;
+  text-align: start;
+}
+
+/* === Status Specific Styling === */
+
+/* Incomplete Task Inner Content & Checkbox */
+.tasks-calendar-container .fc-daygrid-event.task-incomplete .fc-event-main::before,
+.tasks-calendar-container .fc-list-event.task-incomplete .fc-event-main::before,
+.tasks-calendar-container .fc-daygrid-event:not(.task-inprogress):not(.task-completed) .fc-event-main::before,
+.tasks-calendar-container .fc-list-event:not(.task-inprogress):not(.task-completed) .fc-event-main::before {
+  content: ""; /* Ensure empty for incomplete */
+  border-color: var(--tasks-calendar-incomplete-border);
+}
+
+/* In-Progress Task BG/Border (Parent) */
+.tasks-calendar-container .fc-daygrid-event.task-inprogress,
+.tasks-calendar-container .fc-list-event.task-inprogress {
+  background-color: var(--tasks-calendar-inprogress-bg);
+  border-color: var(--tasks-calendar-inprogress-border);
+  opacity: 1; /* Ensure full opacity for in-progress */
+}
+/* In-Progress Task Inner Content & Checkbox */
+.tasks-calendar-container .fc-daygrid-event.task-inprogress .fc-event-main,
+.tasks-calendar-container .fc-list-event.task-inprogress .fc-event-main {
+  text-decoration: none; /* Ensure no text decoration */
+}
+.tasks-calendar-container .fc-daygrid-event.task-inprogress .fc-event-main::before,
+.tasks-calendar-container .fc-list-event.task-inprogress .fc-event-main::before {
+  content: "/";
+  /* Color will inherit from .fc-event-main */
+  border-color: var(--tasks-calendar-inprogress-border);
+}
+
+/* Completed Task BG/Border/Opacity (Parent) */
+.tasks-calendar-container .fc-daygrid-event.task-completed,
+.tasks-calendar-container .fc-list-event.task-completed {
+  background-color: var(--tasks-calendar-completed-bg);
+  border-color: var(--tasks-calendar-completed-border);
+  opacity: var(--tasks-calendar-completed-opacity);
+}
+/* Completed Task Inner Content & Checkbox */
+.tasks-calendar-container .fc-daygrid-event.task-completed .fc-event-main,
+.tasks-calendar-container .fc-list-event.task-completed .fc-event-main {
+  text-decoration: var(--tasks-calendar-completed-text-decoration);
+}
+.tasks-calendar-container .fc-daygrid-event.task-completed .fc-event-main::before,
+.tasks-calendar-container .fc-list-event.task-completed .fc-event-main::before {
+  content: "✓";
+  /* Color will inherit from .fc-event-main */
+  border-color: var(--tasks-calendar-completed-border);
+}
+
+/* Toolbar button styling - Adjusted for better theme matching */
+.tasks-calendar-container .fc .fc-button {
+  /* Use button variables for better theme consistency */
+  background-color: var(--button-secondary-background);
+  color: var(--button-secondary-color);
+  border: 1px solid var(--button-secondary-border-color);
+  border-style: solid; /* Ensure solid border */
+  background-image: none; /* Ensure no background image */
+  box-shadow: none;
+  text-shadow: none;
+  font-size: var(--font-ui-small);
+  font-weight: var(--font-semibold); /* Align font weight */
+  padding: 4px 8px; /* Adjust padding if needed */
+  border-radius: var(--radius-m); /* Use theme radius */
+  transition: background-color 0.1s ease-in-out, border-color 0.1s ease-in-out, color 0.1s ease-in-out; /* Add transition */
+}
+
+.tasks-calendar-container .fc .fc-button:hover {
+    background-color: var(--button-secondary-background-hover);
+    color: var(--button-secondary-color-hover);
+    border-color: var(--button-secondary-border-color-hover);
+}
+
+.tasks-calendar-container .fc .fc-button-primary {
+    /* Use primary button variables */
+    background-color: var(--button-primary-background);
+    color: var(--button-primary-color);
+    border-color: var(--button-primary-border-color);
+}
+
+.tasks-calendar-container .fc .fc-button-primary:hover {
+    background-color: var(--button-primary-background-hover);
+    color: var(--button-primary-color-hover);
+    border-color: var(--button-primary-border-color-hover);
+}
+
+.tasks-calendar-container .fc .fc-button-primary:disabled {
+    background-color: var(--button-primary-background-disabled);
+    border-color: var(--button-primary-border-color-disabled);
+    color: var(--button-primary-color-disabled);
+}
+
+/* Add more specific overrides below if needed */ 
