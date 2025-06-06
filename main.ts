@@ -21,6 +21,7 @@ const DEFAULT_SETTINGS: TasksCalendarSettings = {
 
 export default class TasksCalendarPlugin extends Plugin {
 	settings: TasksCalendarSettings; // Add settings property
+	private refreshTimeout: NodeJS.Timeout | null = null; // Add throttling for refresh
 
 	async onload() {
 		console.log('Loading Tasks Calendar plugin');
@@ -46,29 +47,43 @@ export default class TasksCalendarPlugin extends Plugin {
 		// Add the settings tab
 		this.addSettingTab(new TasksCalendarSettingTab(this.app, this));
 
-		// Register vault change listeners to refresh calendar
-		this.registerEvent(this.app.vault.on('modify', (file) => this.handleVaultChange(file)));
-		this.registerEvent(this.app.vault.on('create', (file) => this.handleVaultChange(file)));
-		this.registerEvent(this.app.vault.on('delete', (file) => this.handleVaultChange(file)));
-		// Consider rename events too? May be complex if ID relies on path
-		// this.registerEvent(this.app.vault.on('rename', (file, oldPath) => this.handleVaultChange(file)));
+			// Register vault change listeners to refresh calendar (throttled to avoid conflicts)
+	this.registerEvent(this.app.vault.on('modify', (file) => this.handleVaultChange(file)));
+	this.registerEvent(this.app.vault.on('create', (file) => this.handleVaultChange(file)));
+	this.registerEvent(this.app.vault.on('delete', (file) => this.handleVaultChange(file)));
 
 	}
 
-	// Helper function to trigger refresh on active calendar views
+	// Helper function to trigger refresh on active calendar views (throttled)
 	handleVaultChange(file: any) {
-		// Check if the changed file is a markdown file, otherwise ignore
+		// Only process markdown files
 		if (!file || !file.path || !file.path.endsWith('.md')) {
 			return;
 		}
-		console.log('Vault change detected in:', file.path);
 
-		// Find active CalendarView instances and refresh them
-		this.app.workspace.getLeavesOfType(CALENDAR_VIEW_TYPE).forEach(leaf => {
-			if (leaf.view instanceof CalendarView) {
-				leaf.view.refreshCalendarData();
-			}
-		});
+		// Only refresh if there are active calendar views (avoid unnecessary processing)
+		const activeCalendarViews = this.app.workspace.getLeavesOfType(CALENDAR_VIEW_TYPE);
+		if (activeCalendarViews.length === 0) {
+			return;
+		}
+
+		// Throttle refresh to avoid conflicts with other plugins (especially Dataview)
+		if (this.refreshTimeout) {
+			clearTimeout(this.refreshTimeout);
+		}
+
+		this.refreshTimeout = setTimeout(() => {
+			console.log('Tasks Calendar: Refreshing due to vault change in:', file.path);
+			
+			// Only refresh if views still exist
+			this.app.workspace.getLeavesOfType(CALENDAR_VIEW_TYPE).forEach(leaf => {
+				if (leaf.view instanceof CalendarView) {
+					leaf.view.refreshCalendarData();
+				}
+			});
+			
+			this.refreshTimeout = null;
+		}, 500); // 500ms delay to avoid conflicts with other plugins
 	}
 
 	// Add methods to load/save settings
@@ -98,6 +113,13 @@ export default class TasksCalendarPlugin extends Plugin {
 
 	onunload() {
 		console.log('Unloading Tasks Calendar plugin');
+		
+		// Clear any pending refresh timeouts
+		if (this.refreshTimeout) {
+			clearTimeout(this.refreshTimeout);
+			this.refreshTimeout = null;
+		}
+		
 		// Clean up: Detach all instances of the view when the plugin unloads
 		this.app.workspace.detachLeavesOfType(CALENDAR_VIEW_TYPE);
 	}

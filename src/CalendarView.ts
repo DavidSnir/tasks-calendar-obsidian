@@ -1,4 +1,4 @@
-import { ItemView, WorkspaceLeaf, TFile, Notice } from "obsidian";
+import { ItemView, WorkspaceLeaf, TFile, Notice, setIcon } from "obsidian";
 import { Calendar, EventDropArg, EventClickArg } from '@fullcalendar/core';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import interactionPlugin from '@fullcalendar/interaction'; // For drag/drop later
@@ -11,6 +11,7 @@ type TaskStatus = 'incomplete' | 'inprogress' | 'completed';
 export class CalendarView extends ItemView {
   private calendar: Calendar | null = null;
   private plugin: TasksCalendarPlugin; // Reference to the main plugin
+  private navTitleEl: HTMLElement | null = null; // Reference to navigation title element
 
   constructor(leaf: WorkspaceLeaf, plugin: TasksCalendarPlugin) { // Accept plugin instance
     super(leaf);
@@ -28,6 +29,10 @@ export class CalendarView extends ItemView {
   async onOpen() {
     const container = this.containerEl.children[1];
     container.empty(); // Clear previous content
+
+    // Create custom inline navigation first
+    const navEl = container.createDiv("tasks-calendar-inline-nav");
+    this.createInlineNavigation(navEl);
 
     // Create a div for FullCalendar to mount onto
     const calendarEl = container.createDiv("tasks-calendar-container");
@@ -50,15 +55,25 @@ export class CalendarView extends ItemView {
       weekNumbers: true,
       weekNumberCalculation: 'ISO',
       firstDay: firstDay, // Set first day of week
-      headerToolbar: {
-        left: 'prev,next today',
-        center: 'title',
-        right: 'dayGridMonth,dayGridWeek' // Add more views if needed
-      },
+      headerToolbar: false, // Disable default toolbar
       editable: true, // Enable dragging
+      droppable: true, // Enable drop zone
+      dragScroll: false, // Disable auto-scroll to reduce positioning issues
+      eventStartEditable: true, // Allow dragging events to change start date
+      eventDurationEditable: false, // Prevent resizing events
+      longPressDelay: 300, // Shorter delay for touch devices
+      eventOverlap: true, // Allow events to overlap
+      snapDuration: '1 day', // Snap to day boundaries
+      dragRevertDuration: 200, // Faster revert animation
       events: taskEvents, // Set initial events
       eventDrop: (info) => { this.handleEventDrop(info); },
-      eventClick: (info) => { this.handleEventClick(info); } // Connect the click handler
+      eventClick: (info) => { this.handleEventClick(info); }, // Connect the click handler
+      datesSet: (info) => { this.updateNavigationTitle(info); }, // Update title when view changes
+      
+      // Enhanced drag mirror positioning
+      eventDidMount: (info) => {
+        this.setupCustomDragBehavior(info.el);
+      }
     });
 
     this.calendar.render();
@@ -77,6 +92,30 @@ export class CalendarView extends ItemView {
     this.app.workspace.on('layout-change', layoutChangeHandler);
     // Register a function to unregister the handler when the view closes
     this.register(() => this.app.workspace.off('layout-change', layoutChangeHandler));
+  }
+
+  async onShow() {
+    // When the view is shown (e.g., tab is switched to),
+    // tell FullCalendar to update its size.
+    // This is crucial if the container was hidden or had zero dimensions.
+    if (this.calendar && this.containerEl) {
+      // Using requestAnimationFrame to ensure the DOM is ready for measurements
+      requestAnimationFrame(() => {
+        // Adding a small delay to allow the UI to fully settle
+        setTimeout(() => {
+          if (this.calendar) { // Re-check calendar instance
+            const calendarGuiContainer = this.containerEl.querySelector('.tasks-calendar-container');
+            if (calendarGuiContainer) {
+              console.log(`CalendarView.onShow(): Container dimensions before updateSize: W=${calendarGuiContainer.clientWidth}, H=${calendarGuiContainer.clientHeight}`);
+            } else {
+              console.log("CalendarView.onShow(): tasks-calendar-container not found!");
+            }
+            this.calendar.updateSize();
+            console.log("CalendarView.onShow(): Called updateSize() after timeout");
+          }
+        }, 100); // 100ms delay, can be adjusted
+      });
+    }
   }
 
   async refreshCalendarData() {
@@ -103,7 +142,21 @@ export class CalendarView extends ItemView {
     // Separate regexes for dates
     const completionDateRegex = /✅ (\d{4}-\d{2}-\d{2})/; 
     const dueDateRegex = /📅 (\d{4}-\d{2}-\d{2})/; 
-    const scheduledDateRegex = /⏳ (\d{4}-\d{2}-\d{2})/; 
+    const scheduledDateRegex = /⏳ (\d{4}-\d{2}-\d{2})/;
+    
+    // Additional patterns to clean from task descriptions
+    const recurringPatterns = [
+      /📅 \d{4}-\d{2}-\d{2}/g,           // Due date pattern
+      /⏳ \d{4}-\d{2}-\d{2}/g,           // Scheduled date pattern  
+      /✅ \d{4}-\d{2}-\d{2}/g,           // Completion date pattern
+      /🔁 [^📅⏳✅]*/g,                   // Recurring pattern (🔁 followed by anything until next emoji)
+      /every \d+ (day|week|month|year)s?/gi, // "every X days/weeks/months/years"
+      /every (day|week|month|year)/gi,    // "every day/week/month/year"
+      /📆 [^📅⏳✅]*/g,                   // Calendar emoji patterns
+      /🕐 [^📅⏳✅]*/g,                   // Clock emoji patterns
+      /⌚ [^📅⏳✅]*/g,                   // Watch emoji patterns
+      /🕒 [^📅⏳✅]*/g,                   // Clock emoji patterns
+    ]; 
 
     const showFileName = this.plugin.settings.showFileName;
 
@@ -146,7 +199,6 @@ export class CalendarView extends ItemView {
               const completionMatch = lineContent.match(completionDateRegex);
               if (completionMatch) {
                 eventDate = completionMatch[1];
-                description = description.replace(completionDateRegex, '').trim(); // Clean description
                 // console.log(`Using completion date ${eventDate} for task in ${file.path} (Line: ${i+1})`);
               }
             }
@@ -156,7 +208,6 @@ export class CalendarView extends ItemView {
               const dueMatch = lineContent.match(dueDateRegex);
               if (dueMatch) {
                 eventDate = dueMatch[1];
-                description = description.replace(dueDateRegex, '').trim(); // Clean description
                 // console.log(`Using due date ${eventDate} for task in ${file.path} (Line: ${i+1})`);
               }
             }
@@ -166,10 +217,17 @@ export class CalendarView extends ItemView {
               const scheduledMatch = lineContent.match(scheduledDateRegex);
               if (scheduledMatch) {
                 eventDate = scheduledMatch[1];
-                description = description.replace(scheduledDateRegex, '').trim(); // Clean description
                 // console.log(`Using scheduled date ${eventDate} for task in ${file.path} (Line: ${i+1})`);
               }
             }
+
+            // Clean up description by removing all date and recurring patterns
+            recurringPatterns.forEach(pattern => {
+              description = description.replace(pattern, '');
+            });
+            
+            // Final cleanup - remove extra spaces and trim
+            description = description.replace(/\s+/g, ' ').trim();
 
             // 4. If no relevant date found, skip this task for the calendar
             if (eventDate === null) {
@@ -183,7 +241,12 @@ export class CalendarView extends ItemView {
             let eventTitle = `${description} ${statusEmoji}`;
 
             if (showFileName) {
-              eventTitle = `${fileName}\n${eventTitle}`;
+              // Add arrow between filename and task with RTL support
+              const isRTL = this.plugin.settings.enableRtl;
+              const arrow = isRTL ? '←' : '→';
+              
+              // Both LTR and RTL: [filename] [arrow] [task description]
+              eventTitle = `${fileName} ${arrow}\n${description} ${statusEmoji}`;
             }
 
             console.log(`Adding task: ${description} (Status: ${status}) on ${eventDate} in ${file.path} (Line: ${i+1})`);
@@ -417,5 +480,143 @@ export class CalendarView extends ItemView {
         event.setExtendedProp('status', previousStatus);
         event.setProp('classNames', event.classNames.filter(cn => !cn.startsWith('task-')).concat(previousClassName)); // Access classNames property
     }
+  }
+
+  // --- Custom Inline Navigation --- 
+  createInlineNavigation(navEl: HTMLElement) {
+    // Left controls
+    const leftControls = navEl.createDiv("nav-controls");
+    
+    const prevArrow = leftControls.createSpan("nav-arrow");
+    setIcon(prevArrow, "chevron-left");
+    prevArrow.title = "Previous month";
+    prevArrow.addEventListener('click', () => {
+      if (this.calendar) this.calendar.prev();
+    });
+
+    const todayLink = leftControls.createSpan("nav-today");
+    todayLink.textContent = "Today";
+    todayLink.addEventListener('click', () => {
+      if (this.calendar) this.calendar.today();
+    });
+
+    const nextArrow = leftControls.createSpan("nav-arrow");
+    setIcon(nextArrow, "chevron-right");
+    nextArrow.title = "Next month";
+    nextArrow.addEventListener('click', () => {
+      if (this.calendar) this.calendar.next();
+    });
+
+    // Center title
+    this.navTitleEl = navEl.createDiv("nav-title");
+    this.navTitleEl.textContent = "Loading...";
+
+    // Right controls
+    const rightControls = navEl.createDiv("nav-controls");
+    
+    const monthLink = rightControls.createSpan("nav-link active");
+    monthLink.textContent = "Month";
+    monthLink.addEventListener('click', () => {
+      if (this.calendar) {
+        this.calendar.changeView('dayGridMonth');
+        // Update active state
+        monthLink.classList.add('active');
+        weekLink.classList.remove('active');
+      }
+    });
+
+    const separator = rightControls.createSpan("nav-separator");
+    separator.textContent = "•";
+
+    const weekLink = rightControls.createSpan("nav-link");
+    weekLink.textContent = "Week";
+    weekLink.addEventListener('click', () => {
+      if (this.calendar) {
+        this.calendar.changeView('dayGridWeek');
+        // Update active state
+        weekLink.classList.add('active');
+        monthLink.classList.remove('active');
+      }
+    });
+  }
+
+  updateNavigationTitle(dateInfo: any) {
+    if (this.navTitleEl && dateInfo.view) {
+      const viewTitle = dateInfo.view.title;
+      this.navTitleEl.textContent = viewTitle;
+    }
+  }
+
+  // Enhanced drag behavior with proper offset calculation
+  setupCustomDragBehavior(eventEl: HTMLElement) {
+    eventEl.classList.add('tasks-calendar-draggable');
+    
+    let isDragging = false;
+    let dragMirror: HTMLElement | null = null;
+    
+    // Track drag start
+    const handleMouseDown = (e: MouseEvent) => {
+      setTimeout(() => {
+        dragMirror = document.querySelector('.fc-event-mirror') as HTMLElement;
+        if (dragMirror) {
+          isDragging = true;
+          dragMirror.style.opacity = '0.8';
+          dragMirror.style.transform = 'rotate(2deg)';
+          
+          // Set initial position accounting for container offset
+          this.updateDragMirrorPosition(e, dragMirror);
+        }
+      }, 10);
+    };
+    
+    // Track mouse movement during drag
+    const handleMouseMove = (e: MouseEvent) => {
+      if (isDragging && dragMirror) {
+        this.updateDragMirrorPosition(e, dragMirror);
+      }
+    };
+    
+    // Clean up on drag end
+    const handleMouseUp = () => {
+      isDragging = false;
+      dragMirror = null;
+    };
+    
+    // Add event listeners
+    eventEl.addEventListener('mousedown', handleMouseDown);
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+    
+    // Store cleanup function
+    (eventEl as any).__dragCleanup = () => {
+      eventEl.removeEventListener('mousedown', handleMouseDown);
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }
+  
+  // Helper method to calculate proper drag mirror position
+  private updateDragMirrorPosition(e: MouseEvent, dragMirror: HTMLElement) {
+    // Get the calendar container's position relative to viewport
+    const calendarContainer = this.containerEl.querySelector('.tasks-calendar-container') as HTMLElement;
+    if (!calendarContainer) return;
+    
+    const containerRect = calendarContainer.getBoundingClientRect();
+    const viewportOffset = {
+      left: containerRect.left,
+      top: containerRect.top
+    };
+    
+    // Calculate mouse position relative to the calendar container
+    const relativeX = e.clientX - viewportOffset.left;
+    const relativeY = e.clientY - viewportOffset.top;
+    
+    // Position drag mirror relative to the container, not viewport
+    // Add small offset so cursor doesn't cover the drag target
+    dragMirror.style.left = (containerRect.left + relativeX + 5) + 'px';
+    dragMirror.style.top = (containerRect.top + relativeY + 5) + 'px';
+    dragMirror.style.position = 'fixed';
+    dragMirror.style.pointerEvents = 'none';
+    dragMirror.style.zIndex = '99999';
   }
 } 

@@ -19,7 +19,7 @@ setting: tasks-calendar-event-padding
   name: Event Padding
   description: Padding around calendar event text.
   type: variable-text
-  default: "1px 3px"
+  default: "2px 6px"
 
 setting: tasks-calendar-rtl-enabled
   name: Enable Right-to-Left (RTL) Text
@@ -104,7 +104,7 @@ setting: tasks-calendar-completed-text-decoration
 :root {
   /* General */
   --tasks-calendar-font-size: var(--font-ui-small);
-  --tasks-calendar-event-padding: 1px 3px;
+  --tasks-calendar-event-padding: 2px 6px;
   --tasks-calendar-today-bg: var(--background-secondary-alt);
   --tasks-calendar-event-text-main: #404040; /* Default Dark Gray */
   
@@ -192,93 +192,214 @@ setting: tasks-calendar-completed-text-decoration
 
 /* === Status Specific Styling === */
 
-/* Incomplete Task Inner Content & Checkbox */
-.tasks-calendar-container .fc-daygrid-event.task-incomplete .fc-event-main::before,
-.tasks-calendar-container .fc-list-event.task-incomplete .fc-event-main::before,
-.tasks-calendar-container .fc-daygrid-event:not(.task-inprogress):not(.task-completed) .fc-event-main::before,
-.tasks-calendar-container .fc-list-event:not(.task-inprogress):not(.task-completed) .fc-event-main::before {
-  content: ""; /* Ensure empty for incomplete */
+/* Incomplete Tasks (Default) */
+.tasks-calendar-container .fc-daygrid-event.task-incomplete,
+.tasks-calendar-container .fc-list-event.task-incomplete,
+.tasks-calendar-container .fc-daygrid-event:not(.task-inprogress):not(.task-completed),
+.tasks-calendar-container .fc-list-event:not(.task-inprogress):not(.task-completed) {
+  background-color: var(--tasks-calendar-incomplete-bg);
   border-color: var(--tasks-calendar-incomplete-border);
 }
 
-/* In-Progress Task BG/Border (Parent) */
+/* In-Progress Tasks */
 .tasks-calendar-container .fc-daygrid-event.task-inprogress,
 .tasks-calendar-container .fc-list-event.task-inprogress {
   background-color: var(--tasks-calendar-inprogress-bg);
   border-color: var(--tasks-calendar-inprogress-border);
-  opacity: 1; /* Ensure full opacity for in-progress */
-}
-/* In-Progress Task Inner Content & Checkbox */
-.tasks-calendar-container .fc-daygrid-event.task-inprogress .fc-event-main,
-.tasks-calendar-container .fc-list-event.task-inprogress .fc-event-main {
-  text-decoration: none; /* Ensure no text decoration */
-}
-.tasks-calendar-container .fc-daygrid-event.task-inprogress .fc-event-main::before,
-.tasks-calendar-container .fc-list-event.task-inprogress .fc-event-main::before {
-  content: "/";
-  /* Color will inherit from .fc-event-main */
-  border-color: var(--tasks-calendar-inprogress-border);
+  opacity: 1;
 }
 
-/* Completed Task BG/Border/Opacity (Parent) */
+.tasks-calendar-container .fc-daygrid-event.task-inprogress .fc-event-main,
+.tasks-calendar-container .fc-list-event.task-inprogress .fc-event-main {
+  text-decoration: none;
+}
+
+/* Completed Tasks */
 .tasks-calendar-container .fc-daygrid-event.task-completed,
 .tasks-calendar-container .fc-list-event.task-completed {
   background-color: var(--tasks-calendar-completed-bg);
   border-color: var(--tasks-calendar-completed-border);
   opacity: var(--tasks-calendar-completed-opacity);
 }
-/* Completed Task Inner Content & Checkbox */
+
 .tasks-calendar-container .fc-daygrid-event.task-completed .fc-event-main,
 .tasks-calendar-container .fc-list-event.task-completed .fc-event-main {
   text-decoration: var(--tasks-calendar-completed-text-decoration);
 }
-.tasks-calendar-container .fc-daygrid-event.task-completed .fc-event-main::before,
-.tasks-calendar-container .fc-list-event.task-completed .fc-event-main::before {
-  content: "✓";
-  /* Color will inherit from .fc-event-main */
-  border-color: var(--tasks-calendar-completed-border);
+
+/***************************/
+/** Drag & Drop Behavior **/
+/***************************/
+
+/* Minimal drag positioning fixes - work with FullCalendar's positioning */
+.tasks-calendar-container .fc-event-dragging {
+  z-index: 9999 !important;
+  pointer-events: none !important;
 }
 
-/* Toolbar button styling - Adjusted for better theme matching */
-.tasks-calendar-container .fc .fc-button {
-  /* Use button variables for better theme consistency */
-  background-color: var(--button-secondary-background);
-  color: var(--button-secondary-color);
-  border: 1px solid var(--button-secondary-border-color);
-  border-style: solid; /* Ensure solid border */
-  background-image: none; /* Ensure no background image */
-  box-shadow: none;
-  text-shadow: none;
+.tasks-calendar-container .fc-event-dragging .fc-event-main {
+  pointer-events: none !important;
+}
+
+/* Fix drag mirror positioning without breaking FullCalendar's calculations */
+.tasks-calendar-container .fc-event-mirror {
+  z-index: 9999 !important;
+  pointer-events: none !important;
+  opacity: 0.8 !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3) !important;
+}
+
+/* Improve drag feedback */
+.tasks-calendar-container .fc-event-selected {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3) !important;
+}
+
+/*************************/
+/** Inline Navigation **/
+/*************************/
+
+/* Hide default FullCalendar toolbar */
+.tasks-calendar-container .fc .fc-toolbar {
+  display: none;
+}
+
+/* Custom Inline Navigation Bar */
+.tasks-calendar-inline-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background-color: var(--background-primary);
+  border-bottom: 1px solid var(--background-modifier-border);
+  font-size: var(--font-ui-medium);
+  margin-bottom: 8px;
+}
+
+/* Navigation Title (Center) */
+.tasks-calendar-inline-nav .nav-title {
+  font-size: var(--font-ui-large);
+  font-weight: var(--font-semibold);
+  color: var(--text-normal);
+  flex: 1;
+  text-align: center;
+  user-select: none;
+}
+
+/* Navigation Controls (Left & Right) */
+.tasks-calendar-inline-nav .nav-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* Navigation Links */
+.tasks-calendar-inline-nav .nav-link {
+  color: var(--text-muted);
+  text-decoration: none;
   font-size: var(--font-ui-small);
-  font-weight: var(--font-semibold); /* Align font weight */
-  padding: 4px 8px; /* Adjust padding if needed */
-  border-radius: var(--radius-m); /* Use theme radius */
-  transition: background-color 0.1s ease-in-out, border-color 0.1s ease-in-out, color 0.1s ease-in-out; /* Add transition */
+  font-weight: var(--font-normal);
+  padding: 2px 6px;
+  border-radius: var(--radius-s);
+  transition: 0.2s;
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
 }
 
-.tasks-calendar-container .fc .fc-button:hover {
-    background-color: var(--button-secondary-background-hover);
-    color: var(--button-secondary-color-hover);
-    border-color: var(--button-secondary-border-color-hover);
+.tasks-calendar-inline-nav .nav-link:hover {
+  color: var(--text-normal);
+  background-color: var(--text-selection);
 }
 
-.tasks-calendar-container .fc .fc-button-primary {
-    /* Use primary button variables */
-    background-color: var(--button-primary-background);
-    color: var(--button-primary-color);
-    border-color: var(--button-primary-border-color);
+.tasks-calendar-inline-nav .nav-link.active {
+  color: var(--text-normal);
+  background-color: var(--background-secondary-alt);
+  font-weight: var(--font-medium);
 }
 
-.tasks-calendar-container .fc .fc-button-primary:hover {
-    background-color: var(--button-primary-background-hover);
-    color: var(--button-primary-color-hover);
-    border-color: var(--button-primary-border-color-hover);
+/* Navigation Arrows */
+.tasks-calendar-inline-nav .nav-arrow {
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 6px;
+  border-radius: var(--radius-s);
+  transition: 0.2s;
+  user-select: none;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
 }
 
-.tasks-calendar-container .fc .fc-button-primary:disabled {
-    background-color: var(--button-primary-background-disabled);
-    border-color: var(--button-primary-border-color-disabled);
-    color: var(--button-primary-color-disabled);
+.tasks-calendar-inline-nav .nav-arrow svg {
+  width: 16px;
+  height: 16px;
+  stroke-width: 2;
 }
 
-/* Add more specific overrides below if needed */ 
+.tasks-calendar-inline-nav .nav-arrow:hover {
+  color: var(--text-normal);
+  background-color: var(--text-selection);
+}
+
+/* Today Button */
+.tasks-calendar-inline-nav .nav-today {
+  font-size: var(--font-ui-smaller);
+  color: var(--text-accent);
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: var(--radius-s);
+  transition: 0.2s;
+  user-select: none;
+}
+
+.tasks-calendar-inline-nav .nav-today:hover {
+  background-color: var(--text-selection);
+}
+
+/* Separator */
+.tasks-calendar-inline-nav .nav-separator {
+  color: var(--text-faint);
+  font-size: var(--font-ui-small);
+  margin: 0 4px;
+}
+
+/* Add more specific overrides below if needed */
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .tasks-calendar-container .fc .fc-button {
+    padding: 3px 6px;
+    font-size: calc(var(--font-ui-small) - 1px);
+    min-height: 20px;
+  }
+  
+  .tasks-calendar-container .fc-daygrid-event .fc-event-main,
+  .tasks-calendar-container .fc-list-event .fc-event-main {
+    padding: 1px 4px;
+    font-size: calc(var(--tasks-calendar-font-size) - 1px);
+  }
+}
+
+/* Accessibility */
+.tasks-calendar-container .fc-daygrid-event:focus,
+.tasks-calendar-container .fc-list-event:focus,
+.tasks-calendar-container .fc .fc-button:focus {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+  .tasks-calendar-container .fc-daygrid-event,
+  .tasks-calendar-container .fc-list-event {
+    border-width: 2px;
+  }
+  
+  .tasks-calendar-container .fc .fc-button {
+    border-width: 2px;
+    font-weight: var(--font-bold);
+  }
+} 
