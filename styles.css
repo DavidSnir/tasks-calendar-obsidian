@@ -123,6 +123,26 @@ setting: tasks-calendar-completed-text-decoration
   --tasks-calendar-completed-text-decoration: line-through;
 }
 
+/***********************/
+/** Container & Layout **/
+/***********************/
+
+.tasks-calendar-container {
+  display: flex !important; /* Use flexbox for better size control */
+  flex-direction: column !important; /* Stack children vertically */
+  width: 100% !important;
+  min-width: 400px !important; /* Prevent horizontal collapse */
+  min-height: 600px !important; /* Increased minimum height to prevent collapse */
+  height: auto !important; /* Allow natural height expansion */
+  max-height: calc(100vh - 120px) !important; /* Prevent overflow beyond viewport */
+  overflow: visible !important; /* Allow content to show properly */
+  position: relative !important; /* Establish positioning context */
+  box-sizing: border-box !important; /* Include padding/border in size calculations */
+  flex-grow: 1 !important; /* Allow container to grow to fill available space */
+  flex-shrink: 0 !important; /* Prevent shrinking below minimum dimensions */
+  contain: layout size !important; /* Optimize containment for better performance */
+}
+
 /* Basic theme integration for FullCalendar */
 .tasks-calendar-container .fc {
   /* Use theme variables for general colors */
@@ -131,6 +151,42 @@ setting: tasks-calendar-completed-text-decoration
   --fc-list-event-dot-width: 8px;
   --fc-page-bg-color: var(--background-primary);
   --fc-neutral-bg-color: var(--background-secondary);
+  display: flex !important;
+  flex-direction: column !important;
+  width: 100% !important;
+  min-width: 350px !important; /* Ensure FullCalendar itself has minimum width */
+  height: auto !important;
+  min-height: 550px !important; /* Ensure FullCalendar itself has minimum height */
+  flex-grow: 1 !important; /* Allow FullCalendar to grow within container */
+  flex-shrink: 0 !important; /* Prevent FullCalendar from shrinking below minimum */
+}
+
+/* Ensure the FullCalendar day grid maintains proper dimensions with modern CSS */
+.tasks-calendar-container .fc-daygrid {
+  width: 100% !important;
+  min-width: 350px !important;
+  min-height: 500px !important;
+  flex-grow: 1 !important;
+  flex-shrink: 0 !important;
+  container-type: inline-size; /* Enable container queries */
+}
+
+.tasks-calendar-container .fc-view-harness {
+  width: 100% !important;
+  min-width: 350px !important;
+  min-height: 500px !important;
+  flex-grow: 1 !important;
+  flex-shrink: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+.tasks-calendar-container .fc-daygrid-body {
+  width: 100% !important;
+  min-width: 350px !important;
+  min-height: 450px !important;
+  flex-grow: 1 !important;
+  flex-shrink: 0 !important;
 }
 
 /* Text color for general elements */
@@ -402,4 +458,55 @@ setting: tasks-calendar-completed-text-decoration
     border-width: 2px;
     font-weight: var(--font-bold);
   }
-} 
+}
+
+/**************************************/
+/** Container Query Optimizations   **/
+/**************************************/
+
+/* Container query optimizations for different sizes */
+@container (min-width: 500px) {
+  .tasks-calendar-container .fc-daygrid-event .fc-event-main {
+    padding: calc(var(--tasks-calendar-event-padding) * 1.2);
+    font-size: var(--tasks-calendar-font-size);
+  }
+}
+
+@container (min-width: 700px) {
+  .tasks-calendar-container {
+    min-height: 650px !important;
+  }
+  
+  .tasks-calendar-container .fc {
+    min-height: 600px !important;
+  }
+}
+
+/* Modern CSS containment for better performance and stability */
+.tasks-calendar-container:has(.fc) {
+  min-height: 600px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  contain: layout size style !important;
+}
+
+/* Force proper sizing when calendar is being initialized */
+.tasks-calendar-container .fc:not(.fc-unthemed) {
+  min-height: 550px !important;
+  flex-basis: auto !important;
+  flex-grow: 1 !important;
+}
+
+/* Intrinsic sizing fallback for older browsers */
+.tasks-calendar-container {
+  height: fit-content;
+  height: -moz-fit-content;
+  height: -webkit-fit-content;
+  min-height: max(600px, 40vh) !important;
+}
+
+/* Ensure calendar never collapses during DOM mutations */
+.tasks-calendar-container .fc-view {
+  min-height: inherit !important;
+  flex-grow: 1 !important;
+}

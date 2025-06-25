@@ -78,13 +78,63 @@ export class CalendarView extends ItemView {
 
     this.calendar.render();
 
+    // Force sizing after render to prevent initial collapse
+    setTimeout(() => {
+      if (this.calendar) {
+        const container = calendarEl;
+        container.style.minHeight = '600px';
+        container.style.height = 'auto';
+        container.style.width = '100%';
+        container.style.minWidth = '400px';
+        container.style.maxWidth = '100%';
+        
+        const fcElement = container.querySelector('.fc') as HTMLElement;
+        if (fcElement) {
+          fcElement.style.minHeight = '550px';
+          fcElement.style.height = 'auto';
+          fcElement.style.width = '100%';
+          fcElement.style.minWidth = '350px';
+        }
+        
+        this.calendar.updateSize();
+        console.log("Forced sizing after initial render");
+      }
+    }, 50);
+
     // Add listener for layout changes to resize calendar
     const layoutChangeHandler = () => {
       if (this.calendar) {
         console.log("Layout changed, updating calendar size.");
         // Use nested requestAnimationFrame for better timing after layout settles
         requestAnimationFrame(() => {
-          requestAnimationFrame(() => this.calendar?.updateSize());
+          requestAnimationFrame(() => {
+            if (this.calendar) {
+              // Ensure container has proper dimensions before updating size
+              const container = this.containerEl.querySelector('.tasks-calendar-container') as HTMLElement;
+              if (container) {
+                // Force proper minimum dimensions regardless of current size
+                container.style.minHeight = '600px';
+                container.style.height = 'auto';
+                container.style.width = '100%';
+                container.style.minWidth = '400px';
+                container.style.maxWidth = '100%';
+                container.style.flexGrow = '1';
+                container.style.flexShrink = '0';
+                
+                // Also ensure FullCalendar's internal elements maintain size
+                const fcElement = container.querySelector('.fc') as HTMLElement;
+                if (fcElement) {
+                  fcElement.style.minHeight = '550px';
+                  fcElement.style.height = 'auto';
+                  fcElement.style.width = '100%';
+                  fcElement.style.minWidth = '350px';
+                }
+                
+                console.log(`Container dimensions after forced sizing: W=${container.offsetWidth}, H=${container.offsetHeight}`);
+              }
+              this.calendar.updateSize();
+            }
+          });
         });
       }
     };
@@ -104,9 +154,24 @@ export class CalendarView extends ItemView {
         // Adding a small delay to allow the UI to fully settle
         setTimeout(() => {
           if (this.calendar) { // Re-check calendar instance
-            const calendarGuiContainer = this.containerEl.querySelector('.tasks-calendar-container');
+            const calendarGuiContainer = this.containerEl.querySelector('.tasks-calendar-container') as HTMLElement;
             if (calendarGuiContainer) {
               console.log(`CalendarView.onShow(): Container dimensions before updateSize: W=${calendarGuiContainer.clientWidth}, H=${calendarGuiContainer.clientHeight}`);
+              // Force proper dimensions on show
+              calendarGuiContainer.style.minHeight = '600px';
+              calendarGuiContainer.style.height = 'auto';
+              calendarGuiContainer.style.width = '100%';
+              calendarGuiContainer.style.minWidth = '400px';
+              calendarGuiContainer.style.maxWidth = '100%';
+              
+              // Also ensure FullCalendar's internal elements maintain size
+              const fcElement = calendarGuiContainer.querySelector('.fc') as HTMLElement;
+              if (fcElement) {
+                fcElement.style.minHeight = '550px';
+                fcElement.style.height = 'auto';
+                fcElement.style.width = '100%';
+                fcElement.style.minWidth = '350px';
+              }
             } else {
               console.log("CalendarView.onShow(): tasks-calendar-container not found!");
             }
