@@ -580,7 +580,13 @@ export class CalendarView extends ItemView {
     setIcon(prevArrow, "chevron-left");
     prevArrow.title = "Previous"; // Adjusted title for general use
     prevArrow.addEventListener('click', () => {
-      if (this.calendar) this.calendar.prev();
+      if (this.calendar) {
+        if (this.calendar.view.type === 'dayGrid3Day') {
+          this.calendar.incrementDate({ days: -1 });
+        } else {
+          this.calendar.prev();
+        }
+      }
     });
 
     const todayLink = leftControls.createSpan("nav-today");
@@ -593,7 +599,13 @@ export class CalendarView extends ItemView {
     setIcon(nextArrow, "chevron-right");
     nextArrow.title = "Next"; // Adjusted title for general use
     nextArrow.addEventListener('click', () => {
-      if (this.calendar) this.calendar.next();
+      if (this.calendar) {
+        if (this.calendar.view.type === 'dayGrid3Day') {
+          this.calendar.incrementDate({ days: 1 });
+        } else {
+          this.calendar.next();
+        }
+      }
     });
 
     // Center title
