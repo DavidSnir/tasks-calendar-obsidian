@@ -19,7 +19,19 @@ setting: tasks-calendar-event-padding
   name: Event Padding
   description: Padding around calendar event text.
   type: variable-text
-  default: "2px 6px"
+  default: "5px"
+
+setting: tasks-calendar-event-margin
+  name: Event Margin
+  description: Vertical margin between calendar events.
+  type: variable-text
+  default: "3px"
+
+setting: tasks-calendar-day-cell-padding
+  name: Day Cell Padding
+  description: Padding inside each day cell in the calendar grid.
+  type: variable-text
+  default: "10px"
 
 setting: tasks-calendar-rtl-enabled
   name: Enable Right-to-Left (RTL) Text
@@ -52,9 +64,9 @@ setting: tasks-calendar-incomplete-bg
   default: "#dae5f0"
   format: hex
 setting: tasks-calendar-incomplete-border
-  name: Incomplete Task Border
+  name: Incomplete Task Outline Color
   type: variable-color
-  default: var(--background-modifier-border)
+  default: "#8ab4f8"
   format: hex
 
 setting: tasks-calendar-inprogress-bg
@@ -104,13 +116,15 @@ setting: tasks-calendar-completed-text-decoration
 :root {
   /* General */
   --tasks-calendar-font-size: var(--font-ui-small);
-  --tasks-calendar-event-padding: 2px 6px;
+  --tasks-calendar-event-padding: 5px;
+  --tasks-calendar-event-margin: 3px;
+  --tasks-calendar-day-cell-padding: 10px;
   --tasks-calendar-today-bg: var(--background-secondary-alt);
   --tasks-calendar-event-text-main: #404040; /* Default Dark Gray */
   
   /* Incomplete Tasks */
-  --tasks-calendar-incomplete-bg: #dae5f0; /* Set to user specified hex */
-  --tasks-calendar-incomplete-border: var(--background-modifier-border);
+  --tasks-calendar-incomplete-bg: #dae5f0;
+  --tasks-calendar-incomplete-border: #8ab4f8; /* A more visible blue for outline */
 
   /* In-Progress Tasks */
   --tasks-calendar-inprogress-bg: #FAFAD2; /* LightGoldenrodYellow */
@@ -126,6 +140,18 @@ setting: tasks-calendar-completed-text-decoration
 /***********************/
 /** Container & Layout **/
 /***********************/
+
+/* Add padding to day cells for more breathing room */
+.tasks-calendar-container .fc .fc-daygrid-day-frame {
+    padding: 0; /* Reset frame padding */
+}
+
+/* Apply padding directly to the events container and background layer */
+.tasks-calendar-container .fc .fc-daygrid-day-events,
+.tasks-calendar-container .fc .fc-daygrid-day-bg {
+    padding: var(--tasks-calendar-day-cell-padding);
+    box-sizing: border-box;
+}
 
 /* Main container layout */
 .tasks-calendar-container {
@@ -174,6 +200,15 @@ setting: tasks-calendar-completed-text-decoration
   background-color: var(--tasks-calendar-today-bg);
 }
 
+/* Event styling - Base layout for ALL events */
+.tasks-calendar-container .fc-daygrid-event,
+.tasks-calendar-container .fc-list-event {
+  border-radius: var(--radius-s);
+  padding: 0; /* Padding is applied to inner element */
+  margin-bottom: var(--tasks-calendar-event-margin);
+  border: 1px solid transparent; /* Default border */
+}
+
 /* Event styling - Apply base styles */
 /* Increase specificity by adding .fc-daygrid-event / .fc-list-event */
 .tasks-calendar-container .fc-daygrid-event.task-incomplete,
@@ -182,10 +217,8 @@ setting: tasks-calendar-completed-text-decoration
 .tasks-calendar-container .fc-list-event:not(.task-inprogress):not(.task-completed) /* Catch default state */
 {
   background-color: var(--tasks-calendar-incomplete-bg);
-  border: 1px solid var(--tasks-calendar-incomplete-border);
-  border-radius: var(--radius-s);
-  padding: 0;
-  margin-bottom: 2px;
+  border-color: var(--tasks-calendar-incomplete-border);
+  /* Removed margin, padding, border-radius from here */
 }
 
 /* Inner content base styles */
@@ -216,6 +249,19 @@ setting: tasks-calendar-completed-text-decoration
 }
 
 /* === Status Specific Styling === */
+
+/* Set text color for incomplete tasks to ensure readability with transparent background */
+.tasks-calendar-container .fc-daygrid-event.task-incomplete .fc-event-main,
+.tasks-calendar-container .fc-list-event.task-incomplete .fc-event-main,
+.tasks-calendar-container .fc-daygrid-event:not(.task-inprogress):not(.task-completed) .fc-event-main,
+.tasks-calendar-container .fc-list-event:not(.task-inprogress):not(.task-completed) .fc-event-main {
+  color: var(--text-normal);
+}
+
+/* Style the task description to be bold */
+.tasks-calendar-event .task-description {
+  font-weight: bold;
+}
 
 /* Incomplete Tasks (Default) */
 .tasks-calendar-container .fc-daygrid-event.task-incomplete,
@@ -387,7 +433,6 @@ setting: tasks-calendar-completed-text-decoration
 /* Separator */
 .tasks-calendar-inline-nav .nav-separator {
   color: var(--text-faint);
-  font-size: var(--font-ui-small);
   margin: 0 4px;
 }
 
@@ -478,4 +523,44 @@ setting: tasks-calendar-completed-text-decoration
 .tasks-calendar-container .fc-view {
   min-height: inherit !important;
   flex-grow: 1 !important;
+}
+
+/***********************/
+/** Responsive Design **/
+/***********************/
+
+/* Media query for smaller screens (e.g., mobile) */
+@media (max-width: 768px) {
+  /* Stack navigation controls vertically on small screens */
+  .tasks-calendar-inline-nav {
+    flex-direction: column;
+    gap: 12px; /* Add space between stacked elements */
+    padding-top: 12px;
+    padding-bottom: 12px;
+  }
+  
+  /* Center the control groups */
+  .tasks-calendar-inline-nav .nav-controls {
+    justify-content: center;
+    width: 100%; /* Ensure they take up full width to center properly */
+  }
+  
+  .tasks-calendar-container .fc .fc-button {
+    padding: 6px 10px;
+    font-size: var(--font-ui-small);
+  }
+  .tasks-calendar-container .fc-daygrid-event .fc-event-main,
+  .tasks-calendar-container .fc-list-event .fc-event-main {
+    font-size: 11px; /* Even smaller on mobile */
+  }
+}
+
+/***********************/
+/**  Accessibility  **/
+/***********************/
+
+/* Focus styles for events */
+.tasks-calendar-container .fc-daygrid-event:focus,
+.tasks-calendar-container .fc-list-event:focus {
+  outline: 2px solid var(--interactive-accent);
 }

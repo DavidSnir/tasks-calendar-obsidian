@@ -52,6 +52,13 @@ export class CalendarView extends ItemView {
     this.calendar = new Calendar(calendarEl, {
       plugins: [ dayGridPlugin, interactionPlugin ],
       initialView: 'dayGridMonth',
+      views: {
+        dayGrid3Day: {
+          type: 'dayGrid',
+          duration: { days: 3 },
+          buttonText: '3 day',
+        }
+      },
       weekNumbers: true,
       weekNumberCalculation: 'ISO',
       firstDay: firstDay, // Set first day of week
@@ -152,7 +159,17 @@ export class CalendarView extends ItemView {
   renderEventContent(info: any) {
     const eventEl = document.createElement('div');
     eventEl.addClass('tasks-calendar-event');
-    eventEl.innerHTML = info.event.title; // Use the processed title
+
+    const { fileName, taskDescription, showFileName } = info.event.extendedProps;
+    const arrow = this.plugin.settings.enableRtl ? '←' : '→';
+
+    if (showFileName && fileName) {
+      const sourceEl = eventEl.createSpan({ cls: 'task-source' });
+      sourceEl.textContent = `${fileName} ${arrow} `;
+    }
+
+    const descriptionEl = eventEl.createSpan({ cls: 'task-description' });
+    descriptionEl.textContent = taskDescription;
     
     // Add custom attributes for styling based on status
     const status = info.event.extendedProps.status;
@@ -319,7 +336,7 @@ export class CalendarView extends ItemView {
 
             const taskEvent = {
               id: taskId,
-              title: finalTitle,
+              title: finalTitle, // Keep for accessibility/tooltips
               start: eventDate,
               allDay: true,
               classNames: [statusClass],
@@ -328,7 +345,10 @@ export class CalendarView extends ItemView {
                 filePath: file.path,
                 lineNumber: i,
                 status: status,
-                sortOrder: sortOrder
+                sortOrder: sortOrder,
+                fileName: fileName,
+                taskDescription: cleanedDescription,
+                showFileName: showFileName
               }
             };
             allTasks.push(taskEvent);
@@ -558,7 +578,7 @@ export class CalendarView extends ItemView {
     
     const prevArrow = leftControls.createSpan("nav-arrow");
     setIcon(prevArrow, "chevron-left");
-    prevArrow.title = "Previous month";
+    prevArrow.title = "Previous"; // Adjusted title for general use
     prevArrow.addEventListener('click', () => {
       if (this.calendar) this.calendar.prev();
     });
@@ -571,7 +591,7 @@ export class CalendarView extends ItemView {
 
     const nextArrow = leftControls.createSpan("nav-arrow");
     setIcon(nextArrow, "chevron-right");
-    nextArrow.title = "Next month";
+    nextArrow.title = "Next"; // Adjusted title for general use
     nextArrow.addEventListener('click', () => {
       if (this.calendar) this.calendar.next();
     });
@@ -585,28 +605,32 @@ export class CalendarView extends ItemView {
     
     const monthLink = rightControls.createSpan("nav-link active");
     monthLink.textContent = "Month";
-    monthLink.addEventListener('click', () => {
-      if (this.calendar) {
-        this.calendar.changeView('dayGridMonth');
-        // Update active state
-        monthLink.classList.add('active');
-        weekLink.classList.remove('active');
-      }
-    });
-
-    const separator = rightControls.createSpan("nav-separator");
-    separator.textContent = "•";
+    
+    const separator1 = rightControls.createSpan("nav-separator");
+    separator1.textContent = "•";
 
     const weekLink = rightControls.createSpan("nav-link");
     weekLink.textContent = "Week";
-    weekLink.addEventListener('click', () => {
-      if (this.calendar) {
-        this.calendar.changeView('dayGridWeek');
-        // Update active state
-        weekLink.classList.add('active');
-        monthLink.classList.remove('active');
-      }
-    });
+
+    const separator2 = rightControls.createSpan("nav-separator");
+    separator2.textContent = "•";
+    
+    const day3Link = rightControls.createSpan("nav-link");
+    day3Link.textContent = "3 Day";
+    
+    const allLinks = [monthLink, weekLink, day3Link];
+    
+    const handleViewChange = (viewName: string, clickedLink: HTMLElement) => {
+        if (this.calendar) {
+            this.calendar.changeView(viewName);
+            allLinks.forEach(link => link.classList.remove('active'));
+            clickedLink.classList.add('active');
+        }
+    };
+    
+    monthLink.addEventListener('click', () => handleViewChange('dayGridMonth', monthLink));
+    weekLink.addEventListener('click', () => handleViewChange('dayGridWeek', weekLink));
+    day3Link.addEventListener('click', () => handleViewChange('dayGrid3Day', day3Link));
   }
 
   updateNavigationTitle(dateInfo: any) {
