@@ -2,21 +2,23 @@ import { App, Plugin, PluginSettingTab, Setting, WorkspaceLeaf } from 'obsidian'
 import { CalendarView, CALENDAR_VIEW_TYPE } from './src/CalendarView'; // Import the view
 
 // Settings Interface
-interface TasksCalendarSettings {
+export interface TasksCalendarSettings {
 	mySetting: string;
 	showFileName: boolean;
 	enableRtl: boolean;
 	weekTagPrefix: string; // Add setting for week tag prefix
 	startWeekOnSunday: boolean; // Add setting for first day of week
+	textDirection: 'ltr' | 'rtl';
 }
 
 // Default Settings
-const DEFAULT_SETTINGS: TasksCalendarSettings = {
+export const DEFAULT_SETTINGS: TasksCalendarSettings = {
 	mySetting: 'default',
-	showFileName: false,
+	showFileName: true,
 	enableRtl: false,
 	weekTagPrefix: '#week',
-	startWeekOnSunday: false // Default to Monday start (ISO standard)
+	startWeekOnSunday: true,
+	textDirection: 'ltr'
 }
 
 export default class TasksCalendarPlugin extends Plugin {
@@ -35,6 +37,10 @@ export default class TasksCalendarPlugin extends Plugin {
 			(leaf) => new CalendarView(leaf, this)
 		);
 
+		this.addRibbonIcon('calendar-days', 'Tasks Calendar', () => {
+			this.activateView();
+		});
+
 		// Add command to open the view
 		this.addCommand({
 			id: 'open-tasks-calendar-view',
@@ -47,11 +53,14 @@ export default class TasksCalendarPlugin extends Plugin {
 		// Add the settings tab
 		this.addSettingTab(new TasksCalendarSettingTab(this.app, this));
 
-			// Register vault change listeners to refresh calendar (throttled to avoid conflicts)
-	this.registerEvent(this.app.vault.on('modify', (file) => this.handleVaultChange(file)));
-	this.registerEvent(this.app.vault.on('create', (file) => this.handleVaultChange(file)));
-	this.registerEvent(this.app.vault.on('delete', (file) => this.handleVaultChange(file)));
+		// Register vault change listeners to refresh calendar (throttled to avoid conflicts)
+		this.registerEvent(this.app.vault.on('modify', (file) => this.handleVaultChange(file)));
+		this.registerEvent(this.app.vault.on('create', (file) => this.handleVaultChange(file)));
+		this.registerEvent(this.app.vault.on('delete', (file) => this.handleVaultChange(file)));
 
+		this.app.workspace.onLayoutReady(() => {
+			// ... existing code ...
+		});
 	}
 
 	// Helper function to trigger refresh on active calendar views (throttled)
@@ -188,14 +197,14 @@ class TasksCalendarSettingTab extends PluginSettingTab {
 
 		// Add the new RTL toggle setting
 		new Setting(containerEl)
-			.setName('Enable Right-to-Left (RTL) Text')
-			.setDesc('Display task text with right-to-left directionality (e.g., for Hebrew, Arabic). Experimental, may require view refresh.')
+			.setName('Enable RTL (Right-to-Left) Layout')
+			.setDesc('Render the calendar in RTL mode for languages like Hebrew or Arabic.')
 			.addToggle(toggle => toggle
 				.setValue(this.plugin.settings.enableRtl)
 				.onChange(async (value) => {
 					this.plugin.settings.enableRtl = value;
+					this.plugin.settings.textDirection = value ? 'rtl' : 'ltr';
 					await this.plugin.saveSettings();
-					// TODO: Add logic to apply/remove RTL class from view dynamically or prompt refresh
 				}));
 
 		new Setting(containerEl)

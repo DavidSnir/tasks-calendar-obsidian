@@ -56,8 +56,14 @@ export class CalendarView extends ItemView {
       weekNumberCalculation: 'ISO',
       firstDay: firstDay, // Set first day of week
       headerToolbar: false, // Disable default toolbar
-      editable: true, // Enable dragging
-      droppable: true, // Enable drop zone
+      editable: true,
+      droppable: true,
+      height: 'auto',
+      dayMaxEvents: false, // Show all events, allowing the view to scroll
+      direction: this.plugin.settings.textDirection,
+      eventOrder: 'sortOrder', // Sort tasks by status
+      eventDrop: this.handleEventDrop.bind(this),
+      eventContent: this.renderEventContent.bind(this),
       dragScroll: false, // Disable auto-scroll to reduce positioning issues
       eventStartEditable: true, // Allow dragging events to change start date
       eventDurationEditable: false, // Prevent resizing events
@@ -66,7 +72,6 @@ export class CalendarView extends ItemView {
       snapDuration: '1 day', // Snap to day boundaries
       dragRevertDuration: 200, // Faster revert animation
       events: taskEvents, // Set initial events
-      eventDrop: (info) => { this.handleEventDrop(info); },
       eventClick: (info) => { this.handleEventClick(info); }, // Connect the click handler
       datesSet: (info) => { this.updateNavigationTitle(info); }, // Update title when view changes
       
@@ -142,6 +147,20 @@ export class CalendarView extends ItemView {
     this.app.workspace.on('layout-change', layoutChangeHandler);
     // Register a function to unregister the handler when the view closes
     this.register(() => this.app.workspace.off('layout-change', layoutChangeHandler));
+  }
+
+  renderEventContent(info: any) {
+    const eventEl = document.createElement('div');
+    eventEl.addClass('tasks-calendar-event');
+    eventEl.innerHTML = info.event.title; // Use the processed title
+    
+    // Add custom attributes for styling based on status
+    const status = info.event.extendedProps.status;
+    if (status) {
+        eventEl.setAttribute('data-status', status);
+    }
+    
+    return { domNodes: [eventEl] };
   }
 
   async onShow() {
@@ -241,18 +260,23 @@ export class CalendarView extends ItemView {
             const taskId = `${file.path}:${i}`;
             const fileName = file.basename;
 
-            // Determine Status
+            // Determine Status and Sort Order
             let status: TaskStatus = 'incomplete';
             let statusClass = 'task-incomplete';
-            let statusEmoji = '❎'; 
-            if (statusChar.toLowerCase() === 'x') {
-                status = 'completed';
-                statusClass = 'task-completed';
-                statusEmoji = '✅';
+            let sortOrder: number;
+
+            if (statusChar === 'x' || statusChar === 'X') {
+              status = 'completed';
+              statusClass = 'task-completed';
+              sortOrder = 3; // Completed last
             } else if (statusChar === '/') {
-                status = 'inprogress';
-                statusClass = 'task-inprogress';
-                statusEmoji = '❇️';
+              status = 'inprogress';
+              statusClass = 'task-inprogress';
+              sortOrder = 1; // In-progress first
+            } else { // ' '
+              status = 'incomplete';
+              statusClass = 'task-incomplete';
+              sortOrder = 2; // Incomplete second
             }
 
             // Determine Event Date based on priority
@@ -287,47 +311,27 @@ export class CalendarView extends ItemView {
             }
 
             // Clean up description by removing all date and recurring patterns
-            recurringPatterns.forEach(pattern => {
-              description = description.replace(pattern, '');
-            });
-            
-            // Final cleanup - remove extra spaces and trim
-            description = description.replace(/\s+/g, ' ').trim();
+            const cleanedDescription = recurringPatterns.reduce((acc, pattern) => acc.replace(pattern, ''), lineContent).trim();
+            const arrow = this.plugin.settings.enableRtl ? '←' : '→';
+            const finalTitle = showFileName ? `${fileName} ${arrow} ${cleanedDescription}` : cleanedDescription;
 
-            // 4. If no relevant date found, skip this task for the calendar
-            if (eventDate === null) {
-              // console.log(`Skipping task with no calendar date in ${file.path} (Line: ${i+1}): ${lineContent}`);
-              continue; 
-            }
+            console.log(`Adding task: ${finalTitle} (Status: ${status}) on ${eventDate} in ${file.path} (Line: ${i+1})`);
 
-            // Clean up potential completion date emoji if it wasn't used for date
-            description = description.replace(completionDateRegex, '').trim();
-            // Append status emoji 
-            let eventTitle = `${description} ${statusEmoji}`;
-
-            if (showFileName) {
-              // Add arrow between filename and task with RTL support
-              const isRTL = this.plugin.settings.enableRtl;
-              const arrow = isRTL ? '←' : '→';
-              
-              // Both LTR and RTL: [filename] [arrow] [task description]
-              eventTitle = `${fileName} ${arrow}\n${description} ${statusEmoji}`;
-            }
-
-            console.log(`Adding task: ${description} (Status: ${status}) on ${eventDate} in ${file.path} (Line: ${i+1})`);
-
-            allTasks.push({
+            const taskEvent = {
               id: taskId,
-              title: eventTitle, 
-              start: eventDate, 
+              title: finalTitle,
+              start: eventDate,
               allDay: true,
+              classNames: [statusClass],
               extendedProps: {
+                originalLine: line,
                 filePath: file.path,
                 lineNumber: i,
-                status: status
-              },
-              className: statusClass 
-            });
+                status: status,
+                sortOrder: sortOrder
+              }
+            };
+            allTasks.push(taskEvent);
           }
         }
       } catch (error) {
