@@ -162,26 +162,44 @@ setting: tasks-calendar-completed-text-decoration
     overflow-y: auto; /* This should be the ONLY scrollbar */
     box-sizing: border-box; /* Include padding in height/width calculation */
     min-height: 400px;
+    position: relative; /* Establish positioning context */
 }
 
 /* Ensure FullCalendar's main element is a proper flex child */
 .tasks-calendar-container .fc {
-    flex-grow: 1; /* Allow the calendar to fill the container's height */
+    flex: 1 1 auto; /* Allow the calendar to grow and shrink */
     height: auto; /* Let flexbox manage the height */
     min-height: 0; /* Critical for flex children to not overflow */
+    width: 100%; /* Ensure full width utilization */
+    max-width: 100%; /* Prevent overflow */
 }
 
 /* Ensure FullCalendar's view harness doesn't create its own scroll context */
 .tasks-calendar-container .fc-view-harness {
     overflow: visible !important; /* Force parent to handle scrolling */
-    flex-grow: 1;
+    flex: 1 1 auto; /* Allow flexible sizing */
     height: auto;
+    width: 100%; /* Ensure full width */
+    max-width: 100%; /* Prevent overflow */
 }
 
 /* Specifically target any scroller that FullCalendar might add internally */
 .tasks-calendar-container .fc-scroller {
     overflow: visible !important;
     height: auto !important;
+    width: 100% !important;
+    max-width: 100% !important;
+}
+
+/* Ensure day grid table is responsive */
+.tasks-calendar-container .fc-daygrid-body {
+    width: 100% !important;
+    table-layout: fixed; /* Equal column widths */
+}
+
+.tasks-calendar-container .fc-daygrid-day {
+    min-width: 0; /* Allow cells to shrink */
+    width: auto; /* Flexible cell width */
 }
 
 /* Text color for general elements */

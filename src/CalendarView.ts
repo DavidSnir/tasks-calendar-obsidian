@@ -127,47 +127,76 @@ export class CalendarView extends ItemView {
       }
     }, 50);
 
-    // Add listener for layout changes to resize calendar
-    const layoutChangeHandler = () => {
+    // Enhanced responsive sizing system
+    const resizeHandler = () => {
       if (this.calendar) {
-        console.log("Layout changed, updating calendar size.");
-        // Use nested requestAnimationFrame for better timing after layout settles
+        console.log("Container size changed, updating calendar.");
         requestAnimationFrame(() => {
-          requestAnimationFrame(() => {
-            if (this.calendar) {
-              // Ensure container has proper dimensions before updating size
-              const container = this.containerEl.querySelector('.tasks-calendar-container') as HTMLElement;
-              if (container) {
-                // Force proper minimum dimensions regardless of current size
-                container.style.minHeight = '600px';
-                container.style.height = 'auto';
-                container.style.width = '100%';
-                container.style.minWidth = '400px';
-                container.style.maxWidth = '100%';
-                container.style.flexGrow = '1';
-                container.style.flexShrink = '0';
-                
-                // Also ensure FullCalendar's internal elements maintain size
-                const fcElement = container.querySelector('.fc') as HTMLElement;
-                if (fcElement) {
-                  fcElement.style.minHeight = '550px';
-                  fcElement.style.height = 'auto';
-                  fcElement.style.width = '100%';
-                  fcElement.style.minWidth = '350px';
-                }
-                
-                console.log(`Container dimensions after forced sizing: W=${container.offsetWidth}, H=${container.offsetHeight}`);
-              }
-              this.calendar.updateSize();
-            }
-          });
+          if (this.calendar) {
+            this.calendar.updateSize();
+          }
         });
       }
     };
-    // Register the event handler
-    this.app.workspace.on('layout-change', layoutChangeHandler);
-    // Register a function to unregister the handler when the view closes
-    this.register(() => this.app.workspace.off('layout-change', layoutChangeHandler));
+
+    // Multiple resize detection methods for comprehensive responsiveness
+    const setupResponsiveCalendar = () => {
+      const container = this.containerEl.querySelector('.tasks-calendar-container') as HTMLElement;
+      if (!container) return;
+
+      // 1. ResizeObserver for container size changes (most reliable)
+      if (window.ResizeObserver) {
+        const resizeObserver = new ResizeObserver(() => {
+          resizeHandler();
+        });
+        resizeObserver.observe(container);
+        this.register(() => resizeObserver.disconnect());
+      }
+
+      // 2. Window resize events
+      const windowResizeHandler = () => resizeHandler();
+      window.addEventListener('resize', windowResizeHandler);
+      this.register(() => window.removeEventListener('resize', windowResizeHandler));
+
+      // 3. Layout change events (for Obsidian-specific layout changes)
+      const layoutChangeHandler = () => {
+        console.log("Layout changed, updating calendar size.");
+        setTimeout(() => resizeHandler(), 50); // Small delay for layout settling
+      };
+      this.app.workspace.on('layout-change', layoutChangeHandler);
+      this.register(() => this.app.workspace.off('layout-change', layoutChangeHandler));
+
+      // 4. Periodic size check as fallback
+      const periodicSizeCheck = setInterval(() => {
+        if (this.calendar) {
+          const currentWidth = container.offsetWidth;
+          const currentHeight = container.offsetHeight;
+          
+          // Store last known dimensions
+          if (!container.dataset.lastWidth || !container.dataset.lastHeight) {
+            container.dataset.lastWidth = currentWidth.toString();
+            container.dataset.lastHeight = currentHeight.toString();
+            return;
+          }
+          
+          const lastWidth = parseInt(container.dataset.lastWidth);
+          const lastHeight = parseInt(container.dataset.lastHeight);
+          
+          // Check if dimensions changed significantly
+          if (Math.abs(currentWidth - lastWidth) > 10 || Math.abs(currentHeight - lastHeight) > 10) {
+            console.log(`Periodic size change detected: ${lastWidth}x${lastHeight} -> ${currentWidth}x${currentHeight}`);
+            container.dataset.lastWidth = currentWidth.toString();
+            container.dataset.lastHeight = currentHeight.toString();
+            resizeHandler();
+          }
+        }
+      }, 1000); // Check every second
+      
+      this.register(() => clearInterval(periodicSizeCheck));
+    };
+
+    // Initialize responsive calendar after render
+    setupResponsiveCalendar();
   }
 
   renderEventContent(info: any) {
