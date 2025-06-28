@@ -68,7 +68,16 @@ export class CalendarView extends ItemView {
       height: 'auto',
       dayMaxEvents: false, // Show all events, allowing the view to scroll
       direction: this.plugin.settings.textDirection,
-      eventOrder: 'sortOrder', // Sort tasks by status
+      eventOrder: (a: any, b: any) => {
+        // Custom sorting: first by sortOrder, then by title for stable sorting
+        const orderA = a.extendedProps.sortOrder || 0;
+        const orderB = b.extendedProps.sortOrder || 0;
+        if (orderA !== orderB) {
+          return orderA - orderB;
+        }
+        // Secondary sort by title for consistent ordering
+        return (a.title || '').localeCompare(b.title || '');
+      },
       eventDrop: this.handleEventDrop.bind(this),
       eventContent: this.renderEventContent.bind(this),
       dragScroll: false, // Disable auto-scroll to reduce positioning issues
@@ -79,7 +88,12 @@ export class CalendarView extends ItemView {
       snapDuration: '1 day', // Snap to day boundaries
       dragRevertDuration: 200, // Faster revert animation
       events: taskEvents, // Set initial events
-      eventClick: (info) => { this.handleEventClick(info); }, // Connect the click handler
+      eventClick: (info) => { 
+        // Only handle clicks on actual tasks, not file headers
+        if (!info.event.extendedProps.isFileHeader) {
+          this.handleEventClick(info);
+        }
+      },
       datesSet: (info) => { this.updateNavigationTitle(info); }, // Update title when view changes
       
       // Enhanced drag mirror positioning
@@ -158,23 +172,34 @@ export class CalendarView extends ItemView {
 
   renderEventContent(info: any) {
     const eventEl = document.createElement('div');
-    eventEl.addClass('tasks-calendar-event');
+    const { isFileHeader, isTask, fileName, taskDescription, taskCount } = info.event.extendedProps;
 
-    const { fileName, taskDescription, showFileName } = info.event.extendedProps;
-    const arrow = this.plugin.settings.enableRtl ? '←' : '→';
-
-    if (showFileName && fileName) {
-      const sourceEl = eventEl.createSpan({ cls: 'task-source' });
-      sourceEl.textContent = `${fileName} ${arrow} `;
-    }
-
-    const descriptionEl = eventEl.createSpan({ cls: 'task-description' });
-    descriptionEl.textContent = taskDescription;
-    
-    // Add custom attributes for styling based on status
-    const status = info.event.extendedProps.status;
-    if (status) {
+    if (isFileHeader) {
+      // Render file header
+      eventEl.addClass('tasks-calendar-file-header');
+      eventEl.textContent = fileName;
+      
+      // Add a subtle indicator of task count if desired
+      if (taskCount && taskCount > 1) {
+        const countEl = eventEl.createSpan({ cls: 'task-count' });
+        countEl.textContent = ` (${taskCount})`;
+      }
+    } else if (isTask) {
+      // Render regular task without file name
+      eventEl.addClass('tasks-calendar-event');
+      
+      const descriptionEl = eventEl.createSpan({ cls: 'task-description' });
+      descriptionEl.textContent = taskDescription || info.event.title;
+      
+      // Add custom attributes for styling based on status
+      const status = info.event.extendedProps.status;
+      if (status) {
         eventEl.setAttribute('data-status', status);
+      }
+    } else {
+      // Fallback for any other event types
+      eventEl.addClass('tasks-calendar-event');
+      eventEl.textContent = info.event.title;
     }
     
     return { domNodes: [eventEl] };
@@ -238,6 +263,8 @@ export class CalendarView extends ItemView {
     console.log("Scanning markdown files:", files.map(f => f.path));
 
     const allTasks: any[] = [];
+    const allEvents: any[] = [];
+    
     // Simpler regex to capture status and the rest of the line
     const taskRegex = /^\s*- \[(\s|x|X|\/)\] (.*)/;
     // Separate regexes for dates
@@ -258,8 +285,6 @@ export class CalendarView extends ItemView {
       /⌚ [^📅⏳✅]*/g,                   // Watch emoji patterns
       /🕒 [^📅⏳✅]*/g,                   // Clock emoji patterns
     ]; 
-
-    const showFileName = this.plugin.settings.showFileName;
 
     for (const file of files) {
       try {
@@ -285,15 +310,15 @@ export class CalendarView extends ItemView {
             if (statusChar === 'x' || statusChar === 'X') {
               status = 'completed';
               statusClass = 'task-completed';
-              sortOrder = 3; // Completed last
+              sortOrder = 13; // Completed tasks last within file group
             } else if (statusChar === '/') {
               status = 'inprogress';
               statusClass = 'task-inprogress';
-              sortOrder = 1; // In-progress first
+              sortOrder = 11; // In-progress first within file group
             } else { // ' '
               status = 'incomplete';
               statusClass = 'task-incomplete';
-              sortOrder = 2; // Incomplete second
+              sortOrder = 12; // Incomplete second within file group
             }
 
             // Determine Event Date based on priority
@@ -329,14 +354,12 @@ export class CalendarView extends ItemView {
 
             // Clean up description by removing all date and recurring patterns
             const cleanedDescription = recurringPatterns.reduce((acc, pattern) => acc.replace(pattern, ''), lineContent).trim();
-            const arrow = this.plugin.settings.enableRtl ? '←' : '→';
-            const finalTitle = showFileName ? `${fileName} ${arrow} ${cleanedDescription}` : cleanedDescription;
 
-            console.log(`Adding task: ${finalTitle} (Status: ${status}) on ${eventDate} in ${file.path} (Line: ${i+1})`);
+            console.log(`Adding task: ${cleanedDescription} (Status: ${status}) on ${eventDate} in ${file.path} (Line: ${i+1})`);
 
             const taskEvent = {
               id: taskId,
-              title: finalTitle, // Keep for accessibility/tooltips
+              title: cleanedDescription, // Task title without file name
               start: eventDate,
               allDay: true,
               classNames: [statusClass],
@@ -348,7 +371,8 @@ export class CalendarView extends ItemView {
                 sortOrder: sortOrder,
                 fileName: fileName,
                 taskDescription: cleanedDescription,
-                showFileName: showFileName
+                isFileHeader: false,
+                isTask: true
               }
             };
             allTasks.push(taskEvent);
@@ -359,8 +383,66 @@ export class CalendarView extends ItemView {
       }
     }
 
-    console.log(`Finished scanning. Found ${allTasks.length} tasks with calendar dates.`);
-    return allTasks;
+    // Group tasks by file and date to create file headers
+    const tasksByFileAndDate = new Map<string, Map<string, any[]>>();
+    
+    for (const task of allTasks) {
+      if (!task.start) continue; // Skip tasks without dates
+      
+      const fileKey = task.extendedProps.fileName;
+      const dateKey = task.start;
+      
+      if (!tasksByFileAndDate.has(fileKey)) {
+        tasksByFileAndDate.set(fileKey, new Map());
+      }
+      
+      const fileMap = tasksByFileAndDate.get(fileKey)!;
+      if (!fileMap.has(dateKey)) {
+        fileMap.set(dateKey, []);
+      }
+      
+      fileMap.get(dateKey)!.push(task);
+    }
+
+    // Create file header events for each file/date combination and update task sortOrder
+    let fileIndex = 0;
+    for (const [fileName, dateMap] of tasksByFileAndDate) {
+      const baseSort = fileIndex * 1000; // Give each file a distinct range
+      
+      for (const [date, tasks] of dateMap) {
+        // Create header event with file-specific sortOrder
+        const headerEvent = {
+          id: `header-${fileName}-${date}`,
+          title: fileName,
+          start: date,
+          allDay: true,
+          classNames: ['task-file-header'],
+          extendedProps: {
+            fileName: fileName,
+            isFileHeader: true,
+            isTask: false,
+            sortOrder: baseSort + 100, // Header comes first for this file
+            taskCount: tasks.length
+          }
+        };
+        allEvents.push(headerEvent);
+        
+        // Update sortOrder for tasks in this file to appear after the header
+        tasks.forEach(task => {
+          // Keep the original status-based ordering (11=in-progress, 12=incomplete, 13=completed)
+          // but offset by file index to group by file
+          const statusOffset = task.extendedProps.sortOrder - 10; // Convert 11,12,13 to 1,2,3
+          task.extendedProps.sortOrder = baseSort + 100 + statusOffset;
+        });
+      }
+      fileIndex++;
+    }
+
+    // Add all task events
+    allEvents.push(...allTasks);
+
+    console.log(`Finished scanning. Found ${allTasks.length} tasks with calendar dates and ${tasksByFileAndDate.size} file groups.`);
+    return allEvents;
   }
 
   async onClose() {
@@ -373,6 +455,14 @@ export class CalendarView extends ItemView {
   // --- Handle Drag and Drop --- 
   async handleEventDrop(info: EventDropArg) {
     const event = info.event;
+    
+    // Prevent dragging of file headers
+    if (event.extendedProps.isFileHeader) {
+      console.log("File headers cannot be dragged");
+      info.revert();
+      return;
+    }
+    
     const newDate = event.start;
     const oldDate = info.oldEvent.start; // Get the original date for comparison
 
@@ -438,17 +528,36 @@ export class CalendarView extends ItemView {
             const originalLine = lines[lineNumber];
             console.log("Original line:", originalLine);
 
-            // Use the same regex as in loadTasks to find and replace the date
-            // Be careful to only replace the date part
-            const taskDateRegex = /(📅 )(\d{4}-\d{2}-\d{2})/; 
-            const updatedLine = originalLine.replace(taskDateRegex, `$1${newDateStr}`);
+            // Handle all three date types: due date, scheduled date, and completion date
+            const dueDateRegex = /(📅 )(\d{4}-\d{2}-\d{2})/;
+            const scheduledDateRegex = /(⏳ )(\d{4}-\d{2}-\d{2})/;
+            const completionDateRegex = /(✅ )(\d{4}-\d{2}-\d{2})/;
+            
+            let updatedLine = originalLine;
+            let dateUpdated = false;
 
-            if (originalLine === updatedLine) {
-                // This might happen if the regex didn't match as expected 
-                // or if the date was already correct (though we check earlier)
-                console.warn("Line content did not change after replacement attempt.", originalLine);
-                // Decide if you want to throw an error or just proceed silently
-                // throw new Error("Failed to update date in line"); 
+            // Try to update due date first
+            if (dueDateRegex.test(originalLine)) {
+                updatedLine = originalLine.replace(dueDateRegex, `$1${newDateStr}`);
+                dateUpdated = true;
+                console.log("Updated due date");
+            }
+            // Then try scheduled date
+            else if (scheduledDateRegex.test(originalLine)) {
+                updatedLine = originalLine.replace(scheduledDateRegex, `$1${newDateStr}`);
+                dateUpdated = true;
+                console.log("Updated scheduled date");
+            }
+            // Finally try completion date
+            else if (completionDateRegex.test(originalLine)) {
+                updatedLine = originalLine.replace(completionDateRegex, `$1${newDateStr}`);
+                dateUpdated = true;
+                console.log("Updated completion date");
+            }
+
+            if (!dateUpdated) {
+                console.error("No date pattern found in line:", originalLine);
+                throw new Error("No date pattern found to update");
             }
 
             console.log("Updated line:", updatedLine);
@@ -456,15 +565,19 @@ export class CalendarView extends ItemView {
             return lines.join('\n');
         });
 
+        console.log("Successfully updated task date in file");
         new Notice(`Task date updated in ${file.basename}`);
-        // Optional: Maybe refresh the calendar view if needed, although FullCalendar
-        // usually updates the dragged event correctly on its own.
-        // this.calendar?.refetchEvents();
+        
+        // Refresh calendar data to update file headers after task move
+        setTimeout(() => {
+          this.refreshCalendarData();
+        }, 100); // Small delay to ensure file update is complete
 
     } catch (error) {
         console.error(`Failed to update task in file ${filePath}:`, error);
-        new Notice(`Error updating task in ${file.basename}. See console for details.`);
+        new Notice(`Error updating task: ${error.message}. Reverting change.`);
         info.revert(); // Revert the calendar UI change if file update failed
+        return; // Exit early to prevent any further processing
     }
   }
 

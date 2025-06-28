@@ -258,9 +258,16 @@ setting: tasks-calendar-completed-text-decoration
   color: var(--text-normal);
 }
 
-/* Style the task description to be bold */
+/* Style the task description to be normal weight */
 .tasks-calendar-event .task-description {
-  font-weight: bold;
+  font-weight: normal !important;
+}
+
+/* Ensure all task content is normal weight */
+.tasks-calendar-container .fc-daygrid-event.task-incomplete .fc-event-main,
+.tasks-calendar-container .fc-daygrid-event.task-inprogress .fc-event-main,
+.tasks-calendar-container .fc-daygrid-event.task-completed .fc-event-main {
+  font-weight: normal !important;
 }
 
 /* Incomplete Tasks (Default) */
@@ -563,4 +570,86 @@ setting: tasks-calendar-completed-text-decoration
 .tasks-calendar-container .fc-daygrid-event:focus,
 .tasks-calendar-container .fc-list-event:focus {
   outline: 2px solid var(--interactive-accent);
+}
+
+/* File Header Styles */
+.tasks-calendar-container .fc-daygrid-event.task-file-header {
+  background-color: transparent !important;
+  border: none !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+  margin: 8px 4px 4px 4px !important;
+  cursor: default;
+}
+
+.tasks-calendar-container .fc-daygrid-event.task-file-header .fc-event-main {
+  background-color: transparent !important;
+  border: none !important;
+  border-radius: 0 !important;
+  font-weight: 600 !important;
+  color: var(--text-normal) !important;
+  text-align: left !important;
+  opacity: 1 !important;
+  padding: 2px 0 !important;
+  box-shadow: none !important;
+  cursor: default !important;
+}
+
+/* RTL support for file headers */
+.tasks-calendar-container.tasks-calendar-rtl-enabled .fc-daygrid-event.task-file-header {
+  margin: 8px 4px 4px 4px !important; /* Same margins for RTL */
+}
+
+.tasks-calendar-container.tasks-calendar-rtl-enabled .fc-daygrid-event.task-file-header .fc-event-main {
+  direction: rtl !important;
+  unicode-bidi: embed !important;
+  text-align: start !important;
+}
+
+.tasks-calendar-container .fc-daygrid-event.task-file-header:hover,
+.tasks-calendar-container .fc-daygrid-event.task-file-header:hover .fc-event-main,
+.tasks-calendar-container .fc-daygrid-event.task-file-header:focus,
+.tasks-calendar-container .fc-daygrid-event.task-file-header:focus .fc-event-main {
+  background-color: var(--background-secondary);
+  border-color: var(--background-modifier-border);
+  box-shadow: none;
+  cursor: default;
+}
+
+/* Task count indicator in file headers */
+.tasks-calendar-file-header .task-count {
+  font-size: 0.9em;
+  opacity: 0.7;
+  font-weight: normal;
+}
+
+/* Make file headers non-draggable */
+.tasks-calendar-container .fc-daygrid-event.task-file-header {
+  cursor: default !important;
+}
+
+.tasks-calendar-container .fc-daygrid-event.task-file-header .fc-event-main {
+  cursor: default !important;
+}
+
+/* Ensure regular tasks have proper indentation relative to file headers */
+.tasks-calendar-container .fc-daygrid-event.task-incomplete,
+.tasks-calendar-container .fc-daygrid-event.task-inprogress,
+.tasks-calendar-container .fc-daygrid-event.task-completed {
+  margin-left: 4px;
+  margin-right: 4px;
+  margin-top: 2px;
+  margin-bottom: 2px;
+  font-weight: normal !important; /* Ensure tasks are not bold */
+}
+
+/* RTL support for task indentation */
+.tasks-calendar-container.tasks-calendar-rtl-enabled .fc-daygrid-event.task-incomplete,
+.tasks-calendar-container.tasks-calendar-rtl-enabled .fc-daygrid-event.task-inprogress,
+.tasks-calendar-container.tasks-calendar-rtl-enabled .fc-daygrid-event.task-completed {
+  margin-left: 4px;
+  margin-right: 4px;
+  margin-top: 2px;
+  margin-bottom: 2px;
 }
