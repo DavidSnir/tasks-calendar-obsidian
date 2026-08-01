@@ -8,6 +8,13 @@ export const CALENDAR_VIEW_TYPE = "tasks-calendar-view";
 
 type TaskStatus = 'incomplete' | 'inprogress' | 'completed';
 
+interface RecurrenceRule {
+  interval: number;
+  unit: 'day' | 'week' | 'month' | 'year' | 'weekday';
+  /** Count from the completion date instead of the task's own date. */
+  whenDone: boolean;
+}
+
 export class CalendarView extends ItemView {
   private calendar: Calendar | null = null;
   private plugin: TasksCalendarPlugin; // Reference to the main plugin
@@ -633,11 +640,95 @@ export class CalendarView extends ItemView {
     await this.app.workspace.getLeaf(newLeaf).openFile(file);
   }
 
-  /** Today as YYYY-MM-DD in local time, the format the Tasks plugin uses. */
-  private todayStamp(): string {
-    const now = new Date();
-    return new Date(now.getTime() - (now.getTimezoneOffset() * 60000))
+  /** Format a date as YYYY-MM-DD in local time, the format the Tasks plugin uses. */
+  private stamp(date: Date): string {
+    return new Date(date.getTime() - (date.getTimezoneOffset() * 60000))
       .toISOString().split('T')[0];
+  }
+
+  /** Today as YYYY-MM-DD in local time. */
+  private todayStamp(): string {
+    return this.stamp(new Date());
+  }
+
+  /**
+   * Parse a Tasks-style recurrence rule (🔁 every 2 weeks, 🔁 every day when
+   * done, ...). Returns null when the line does not recur.
+   */
+  private parseRecurrence(line: string): RecurrenceRule | null {
+    // "weekday" has to precede "week", otherwise "week" matches first and
+    // leaves a dangling "day".
+    const match = line.match(/🔁\s*every\s+(?:(\d+)\s+)?(weekday|day|week|month|year)s?\b/i);
+    if (!match) return null;
+
+    return {
+      interval: match[1] ? parseInt(match[1], 10) : 1,
+      unit: match[2].toLowerCase() as RecurrenceRule['unit'],
+      // "when done" counts from the completion date rather than the due date.
+      whenDone: /🔁[^📅⏳✅]*\bwhen\s+done\b/i.test(line),
+    };
+  }
+
+  /** Move a YYYY-MM-DD date forward by one interval of a recurrence rule. */
+  private advanceDate(dateStr: string, rule: RecurrenceRule): string {
+    const [year, month, day] = dateStr.split('-').map(Number);
+    const date = new Date(year, month - 1, day); // Local midnight
+
+    // Clamp to the end of the target month, so "every month" on the 31st gives
+    // the 30th rather than rolling into the next month.
+    const addMonths = (count: number) => {
+      const dayOfMonth = date.getDate();
+      date.setDate(1);
+      date.setMonth(date.getMonth() + count);
+      const daysInMonth = new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+      date.setDate(Math.min(dayOfMonth, daysInMonth));
+    };
+
+    switch (rule.unit) {
+      case 'day':
+        date.setDate(date.getDate() + rule.interval);
+        break;
+      case 'week':
+        date.setDate(date.getDate() + (7 * rule.interval));
+        break;
+      case 'weekday': {
+        let remaining = rule.interval;
+        while (remaining > 0) {
+          date.setDate(date.getDate() + 1);
+          const dayOfWeek = date.getDay();
+          if (dayOfWeek !== 0 && dayOfWeek !== 6) remaining--;
+        }
+        break;
+      }
+      case 'month':
+        addMonths(rule.interval);
+        break;
+      case 'year':
+        addMonths(12 * rule.interval);
+        break;
+    }
+
+    return this.stamp(date);
+  }
+
+  /**
+   * Build the next instance of a recurring task from the line that was just
+   * completed: unchecked again, completion date dropped, every date it carries
+   * moved forward one interval.
+   */
+  private nextOccurrence(completedLine: string, rule: RecurrenceRule): string {
+    let next = completedLine.replace(/^(\s*- \[)[\sxX\/](\])/, '$1 $2');
+    next = next.replace(/\s*✅ \d{4}-\d{2}-\d{2}/, '');
+
+    const base = rule.whenDone ? this.todayStamp() : null;
+    for (const emoji of ['📅', '⏳']) {
+      next = next.replace(
+        new RegExp(`(${emoji} )(\\d{4}-\\d{2}-\\d{2})`),
+        (_full, prefix: string, date: string) => `${prefix}${this.advanceDate(base ?? date, rule)}`
+      );
+    }
+
+    return next;
   }
 
   /**
@@ -724,6 +815,8 @@ export class CalendarView extends ItemView {
         return;
     }
 
+    let recurred = false;
+
     try {
         await this.app.vault.process(file, (data) => {
             const lines = data.split('\n');
@@ -753,10 +846,28 @@ export class CalendarView extends ItemView {
             }
 
             lines[lineNumber] = updatedLine;
+
+            // A recurring task spawns its next instance directly above the one
+            // just completed, the way the Tasks plugin does.
+            if (nextStatus === 'completed') {
+                const rule = this.parseRecurrence(updatedLine);
+                if (rule) {
+                    lines.splice(lineNumber, 0, this.nextOccurrence(updatedLine, rule));
+                    recurred = true;
+                }
+            }
+
             return lines.join('\n');
         });
 
-        new Notice(`Task status set to ${nextStatus} in ${file.basename}`);
+        if (recurred) {
+            // The next instance shifts line numbers, and event ids encode them,
+            // so the calendar has to be rebuilt rather than patched in place.
+            new Notice(`Task completed, next occurrence scheduled in ${file.basename}`);
+            this.refreshCalendarData();
+        } else {
+            new Notice(`Task status set to ${nextStatus} in ${file.basename}`);
+        }
         // No refetch needed for optimistic update
 
     } catch (error) {
