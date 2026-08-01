@@ -242,8 +242,6 @@ setting: tasks-calendar-completed-text-decoration
 .tasks-calendar-container .fc,
 .tasks-calendar-container .fc .fc-col-header-cell-cushion, /* Day headers (Mon, Tue) */
 .tasks-calendar-container .fc .fc-daygrid-day-number, /* Day numbers */
-.tasks-calendar-container .fc .fc-list-day-text,       /* List view day text */
-.tasks-calendar-container .fc .fc-list-day-side-text,  /* List view day side text */
 .tasks-calendar-container .fc-toolbar-title /* Toolbar title */
 {
   color: var(--text-normal);
@@ -255,8 +253,7 @@ setting: tasks-calendar-completed-text-decoration
 }
 
 /* Event styling - Base layout for ALL events */
-.tasks-calendar-container .fc-daygrid-event,
-.tasks-calendar-container .fc-list-event {
+.tasks-calendar-container .fc-daygrid-event {
   border-radius: var(--radius-s);
   padding: 0; /* Padding is applied to inner element */
   margin-bottom: var(--tasks-calendar-event-margin);
@@ -264,11 +261,9 @@ setting: tasks-calendar-completed-text-decoration
 }
 
 /* Event styling - Apply base styles */
-/* Increase specificity by adding .fc-daygrid-event / .fc-list-event */
+/* Increase specificity by adding .fc-daygrid-event */
 .tasks-calendar-container .fc-daygrid-event.task-incomplete,
-.tasks-calendar-container .fc-list-event.task-incomplete,
-.tasks-calendar-container .fc-daygrid-event:not(.task-inprogress):not(.task-completed), /* Catch default state */
-.tasks-calendar-container .fc-list-event:not(.task-inprogress):not(.task-completed) /* Catch default state */
+.tasks-calendar-container .fc-daygrid-event:not(.task-inprogress):not(.task-completed) /* Catch default state */
 {
   background-color: var(--tasks-calendar-incomplete-bg);
   border-color: var(--tasks-calendar-incomplete-border);
@@ -277,8 +272,7 @@ setting: tasks-calendar-completed-text-decoration
 
 /* Inner content base styles */
 /* Increase specificity */
-.tasks-calendar-container .fc-daygrid-event .fc-event-main,
-.tasks-calendar-container .fc-list-event .fc-event-main
+.tasks-calendar-container .fc-daygrid-event .fc-event-main
 {
   font-size: var(--tasks-calendar-font-size);
   padding: var(--tasks-calendar-event-padding); /* Keep original general padding */
@@ -294,8 +288,7 @@ setting: tasks-calendar-completed-text-decoration
 }
 
 /* Conditional RTL Styling */
-.tasks-calendar-container.tasks-calendar-rtl-enabled .fc-daygrid-event .fc-event-main,
-.tasks-calendar-container.tasks-calendar-rtl-enabled .fc-list-event .fc-event-main {
+.tasks-calendar-container.tasks-calendar-rtl-enabled .fc-daygrid-event .fc-event-main {
   /* RTL Support */
   direction: rtl;
   unicode-bidi: embed;
@@ -323,29 +316,24 @@ setting: tasks-calendar-completed-text-decoration
 
 /* Incomplete Tasks (Default) */
 .tasks-calendar-container .fc-daygrid-event.task-incomplete,
-.tasks-calendar-container .fc-list-event.task-incomplete,
-.tasks-calendar-container .fc-daygrid-event:not(.task-inprogress):not(.task-completed),
-.tasks-calendar-container .fc-list-event:not(.task-inprogress):not(.task-completed) {
+.tasks-calendar-container .fc-daygrid-event:not(.task-inprogress):not(.task-completed) {
   background-color: var(--tasks-calendar-incomplete-bg);
   border-color: var(--tasks-calendar-incomplete-border);
 }
 
 /* In-Progress Tasks */
-.tasks-calendar-container .fc-daygrid-event.task-inprogress,
-.tasks-calendar-container .fc-list-event.task-inprogress {
+.tasks-calendar-container .fc-daygrid-event.task-inprogress {
   background-color: var(--tasks-calendar-inprogress-bg);
   border-color: var(--tasks-calendar-inprogress-border);
   opacity: 1;
 }
 
-.tasks-calendar-container .fc-daygrid-event.task-inprogress .fc-event-main,
-.tasks-calendar-container .fc-list-event.task-inprogress .fc-event-main {
+.tasks-calendar-container .fc-daygrid-event.task-inprogress .fc-event-main {
   text-decoration: none;
 }
 
 /* Completed Tasks */
-.tasks-calendar-container .fc-daygrid-event.task-completed,
-.tasks-calendar-container .fc-list-event.task-completed {
+.tasks-calendar-container .fc-daygrid-event.task-completed {
   background-color: var(--tasks-calendar-completed-bg);
   border-color: var(--tasks-calendar-completed-border);
 }
@@ -353,8 +341,7 @@ setting: tasks-calendar-completed-text-decoration
 /* The fade applies to the text only. Applying it to the whole event dimmed the
    text on top of the strikethrough, which is what made completed tasks hard to
    read; the border and background now stay solid. */
-.tasks-calendar-container .fc-daygrid-event.task-completed .fc-event-main,
-.tasks-calendar-container .fc-list-event.task-completed .fc-event-main {
+.tasks-calendar-container .fc-daygrid-event.task-completed .fc-event-main {
   text-decoration: var(--tasks-calendar-completed-text-decoration);
   color: color-mix(
     in srgb,
@@ -511,8 +498,7 @@ setting: tasks-calendar-completed-text-decoration
     min-height: 20px;
   }
   
-  .tasks-calendar-container .fc-daygrid-event .fc-event-main,
-  .tasks-calendar-container .fc-list-event .fc-event-main {
+  .tasks-calendar-container .fc-daygrid-event .fc-event-main {
     padding: 1px 4px;
     font-size: calc(var(--tasks-calendar-font-size) - 1px);
   }
@@ -520,7 +506,6 @@ setting: tasks-calendar-completed-text-decoration
 
 /* Accessibility */
 .tasks-calendar-container .fc-daygrid-event:focus,
-.tasks-calendar-container .fc-list-event:focus,
 .tasks-calendar-container .fc .fc-button:focus {
   outline: 2px solid var(--color-accent);
   outline-offset: 2px;
@@ -528,8 +513,7 @@ setting: tasks-calendar-completed-text-decoration
 
 /* High contrast mode support */
 @media (prefers-contrast: high) {
-  .tasks-calendar-container .fc-daygrid-event,
-  .tasks-calendar-container .fc-list-event {
+  .tasks-calendar-container .fc-daygrid-event {
     border-width: 2px;
   }
   
@@ -614,8 +598,7 @@ setting: tasks-calendar-completed-text-decoration
     padding: 6px 10px;
     font-size: var(--font-ui-small);
   }
-  .tasks-calendar-container .fc-daygrid-event .fc-event-main,
-  .tasks-calendar-container .fc-list-event .fc-event-main {
+  .tasks-calendar-container .fc-daygrid-event .fc-event-main {
     font-size: 11px; /* Even smaller on mobile */
   }
 }
@@ -625,8 +608,7 @@ setting: tasks-calendar-completed-text-decoration
 /***********************/
 
 /* Focus styles for events */
-.tasks-calendar-container .fc-daygrid-event:focus,
-.tasks-calendar-container .fc-list-event:focus {
+.tasks-calendar-container .fc-daygrid-event:focus {
   outline: 2px solid var(--interactive-accent);
 }
 
