@@ -571,8 +571,16 @@ export class CalendarView extends ItemView {
             let updatedLine = originalLine;
             let dateUpdated = false;
 
+            // Completed tasks are placed on the calendar by their completion
+            // date, so that is the date a drag has to move. Updating the due
+            // date instead would leave the event where it started.
+            if (event.extendedProps.status === 'completed' && completionDateRegex.test(originalLine)) {
+                updatedLine = originalLine.replace(completionDateRegex, `$1${newDateStr}`);
+                dateUpdated = true;
+                console.log("Updated completion date");
+            }
             // Try to update due date first
-            if (dueDateRegex.test(originalLine)) {
+            else if (dueDateRegex.test(originalLine)) {
                 updatedLine = originalLine.replace(dueDateRegex, `$1${newDateStr}`);
                 dateUpdated = true;
                 console.log("Updated due date");
@@ -631,6 +639,36 @@ export class CalendarView extends ItemView {
     // and middle-click open in a new tab exactly as they do elsewhere.
     const newLeaf = Keymap.isModEvent(info.jsEvent);
     await this.app.workspace.getLeaf(newLeaf).openFile(file);
+  }
+
+  /** Today as YYYY-MM-DD in local time, the format the Tasks plugin uses. */
+  private todayStamp(): string {
+    const now = new Date();
+    return new Date(now.getTime() - (now.getTimezoneOffset() * 60000))
+      .toISOString().split('T')[0];
+  }
+
+  /**
+   * Add or remove the Tasks plugin's completion date (✅ YYYY-MM-DD) on a task
+   * line, so tasks completed from the calendar are stamped the same way the
+   * Tasks plugin stamps them.
+   */
+  private setCompletionDate(line: string, done: boolean): string {
+    const completionDate = /\s*✅ \d{4}-\d{2}-\d{2}/;
+
+    if (!done) {
+      return line.replace(completionDate, '');
+    }
+    if (completionDate.test(line)) {
+      return line; // Already stamped (e.g. by the Tasks plugin); leave it be
+    }
+
+    // A trailing block reference has to stay last, as it does in Tasks.
+    const blockRef = /(\s+\^[A-Za-z0-9-]+)\s*$/;
+    const stamp = `✅ ${this.todayStamp()}`;
+    return blockRef.test(line)
+      ? line.replace(blockRef, ` ${stamp}$1`)
+      : `${line.trimEnd()} ${stamp}`;
   }
 
   // --- Handle Task Toggling ---
@@ -709,7 +747,11 @@ export class CalendarView extends ItemView {
                 throw new Error("Checkbox pattern not found in line.");
             }
             
-            const updatedLine = originalLine.replace(checkboxRegex, `$1${nextStatusChar}$2`);
+            let updatedLine = originalLine.replace(checkboxRegex, `$1${nextStatusChar}$2`);
+
+            // Completing stamps the line with a completion date; moving back to
+            // in-progress or incomplete removes it again.
+            updatedLine = this.setCompletionDate(updatedLine, nextStatus === 'completed');
 
             // We still check this, but failure doesn't stop the optimistic UI update
             if (originalLine === updatedLine) {
