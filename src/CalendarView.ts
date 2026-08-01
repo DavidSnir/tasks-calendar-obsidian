@@ -356,30 +356,28 @@ export class CalendarView extends ItemView {
             let eventDate: string | null = null;
             let description = lineContent;
 
-            // 1. Check for completion date (only if task is completed)
-            if (status === 'completed') {
-              const completionMatch = lineContent.match(completionDateRegex);
-              if (completionMatch) {
-                eventDate = completionMatch[1];
-                // console.log(`Using completion date ${eventDate} for task in ${file.path} (Line: ${i+1})`);
-              }
+            // 1. Check for due date
+            const dueMatch = lineContent.match(dueDateRegex);
+            if (dueMatch) {
+              eventDate = dueMatch[1];
             }
 
-            // 2. Check for due date (if eventDate not set)
-            if (eventDate === null) {
-              const dueMatch = lineContent.match(dueDateRegex);
-              if (dueMatch) {
-                eventDate = dueMatch[1];
-                // console.log(`Using due date ${eventDate} for task in ${file.path} (Line: ${i+1})`);
-              }
-            }
-
-            // 3. Check for scheduled date (if eventDate still not set)
+            // 2. Check for scheduled date (if eventDate not set)
             if (eventDate === null) {
               const scheduledMatch = lineContent.match(scheduledDateRegex);
               if (scheduledMatch) {
                 eventDate = scheduledMatch[1];
-                // console.log(`Using scheduled date ${eventDate} for task in ${file.path} (Line: ${i+1})`);
+              }
+            }
+
+            // 3. Fall back to the completion date, which is all a task has to
+            // go on when it carries no due or scheduled date. Completing a task
+            // deliberately does NOT move it: it stays on the day it was planned
+            // for, so the calendar still reads as a record of what was due when.
+            if (eventDate === null) {
+              const completionMatch = lineContent.match(completionDateRegex);
+              if (completionMatch) {
+                eventDate = completionMatch[1];
               }
             }
 
@@ -571,16 +569,10 @@ export class CalendarView extends ItemView {
             let updatedLine = originalLine;
             let dateUpdated = false;
 
-            // Completed tasks are placed on the calendar by their completion
-            // date, so that is the date a drag has to move. Updating the due
-            // date instead would leave the event where it started.
-            if (event.extendedProps.status === 'completed' && completionDateRegex.test(originalLine)) {
-                updatedLine = originalLine.replace(completionDateRegex, `$1${newDateStr}`);
-                dateUpdated = true;
-                console.log("Updated completion date");
-            }
+            // This priority deliberately mirrors the one in loadTasks, so a
+            // drag always moves whichever date the event was placed by.
             // Try to update due date first
-            else if (dueDateRegex.test(originalLine)) {
+            if (dueDateRegex.test(originalLine)) {
                 updatedLine = originalLine.replace(dueDateRegex, `$1${newDateStr}`);
                 dateUpdated = true;
                 console.log("Updated due date");
