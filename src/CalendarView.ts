@@ -3,17 +3,18 @@ import { Calendar, EventDropArg, EventClickArg } from '@fullcalendar/core';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import interactionPlugin from '@fullcalendar/interaction'; // For drag/drop later
 import TasksCalendarPlugin from "../main"; // Import the main plugin class to access settings
+import {
+  hasRecurrenceMarker,
+  nextOccurrence,
+  occurrenceAlreadyExists,
+  parseRecurrence,
+  setCompletionDate,
+  stampDate,
+  eventDateFor,
+  type TaskStatus,
+} from "./taskLines";
 
 export const CALENDAR_VIEW_TYPE = "tasks-calendar-view";
-
-type TaskStatus = 'incomplete' | 'inprogress' | 'completed';
-
-interface RecurrenceRule {
-  interval: number;
-  unit: 'day' | 'week' | 'month' | 'year' | 'weekday';
-  /** Count from the completion date instead of the task's own date. */
-  whenDone: boolean;
-}
 
 export class CalendarView extends ItemView {
   private calendar: Calendar | null = null;
@@ -359,36 +360,9 @@ export class CalendarView extends ItemView {
               sortOrder = 12; // Incomplete second within file group
             }
 
-            // Determine Event Date based on priority
-            let eventDate: string | null = null;
-            let description = lineContent;
-
-            // 1. Check for completion date (only if task is completed)
-            if (status === 'completed') {
-              const completionMatch = lineContent.match(completionDateRegex);
-              if (completionMatch) {
-                eventDate = completionMatch[1];
-                // console.log(`Using completion date ${eventDate} for task in ${file.path} (Line: ${i+1})`);
-              }
-            }
-
-            // 2. Check for due date (if eventDate not set)
-            if (eventDate === null) {
-              const dueMatch = lineContent.match(dueDateRegex);
-              if (dueMatch) {
-                eventDate = dueMatch[1];
-                // console.log(`Using due date ${eventDate} for task in ${file.path} (Line: ${i+1})`);
-              }
-            }
-
-            // 3. Check for scheduled date (if eventDate still not set)
-            if (eventDate === null) {
-              const scheduledMatch = lineContent.match(scheduledDateRegex);
-              if (scheduledMatch) {
-                eventDate = scheduledMatch[1];
-                // console.log(`Using scheduled date ${eventDate} for task in ${file.path} (Line: ${i+1})`);
-              }
-            }
+            // Determine Event Date based on priority (see eventDateFor:
+            // handleEventDrop mirrors this order and must stay in step).
+            const eventDate = eventDateFor(status, lineContent);
 
             // Clean up description by removing all date and recurring patterns
             const cleanedDescription = recurringPatterns.reduce((acc, pattern) => acc.replace(pattern, ''), lineContent).trim();
@@ -648,120 +622,6 @@ export class CalendarView extends ItemView {
     await this.app.workspace.getLeaf(newLeaf).openFile(file);
   }
 
-  /** Format a date as YYYY-MM-DD in local time, the format the Tasks plugin uses. */
-  private stamp(date: Date): string {
-    return new Date(date.getTime() - (date.getTimezoneOffset() * 60000))
-      .toISOString().split('T')[0];
-  }
-
-  /** Today as YYYY-MM-DD in local time. */
-  private todayStamp(): string {
-    return this.stamp(new Date());
-  }
-
-  /**
-   * Parse a Tasks-style recurrence rule (🔁 every 2 weeks, 🔁 every day when
-   * done, ...). Returns null when the line does not recur.
-   */
-  private parseRecurrence(line: string): RecurrenceRule | null {
-    // "weekday" has to precede "week", otherwise "week" matches first and
-    // leaves a dangling "day".
-    const match = line.match(/🔁\s*every\s+(?:(\d+)\s+)?(weekday|day|week|month|year)s?\b/i);
-    if (!match) return null;
-
-    return {
-      interval: match[1] ? parseInt(match[1], 10) : 1,
-      unit: match[2].toLowerCase() as RecurrenceRule['unit'],
-      // "when done" counts from the completion date rather than the due date.
-      whenDone: /🔁[^📅⏳✅]*\bwhen\s+done\b/i.test(line),
-    };
-  }
-
-  /** Move a YYYY-MM-DD date forward by one interval of a recurrence rule. */
-  private advanceDate(dateStr: string, rule: RecurrenceRule): string {
-    const [year, month, day] = dateStr.split('-').map(Number);
-    const date = new Date(year, month - 1, day); // Local midnight
-
-    // Clamp to the end of the target month, so "every month" on the 31st gives
-    // the 30th rather than rolling into the next month.
-    const addMonths = (count: number) => {
-      const dayOfMonth = date.getDate();
-      date.setDate(1);
-      date.setMonth(date.getMonth() + count);
-      const daysInMonth = new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
-      date.setDate(Math.min(dayOfMonth, daysInMonth));
-    };
-
-    switch (rule.unit) {
-      case 'day':
-        date.setDate(date.getDate() + rule.interval);
-        break;
-      case 'week':
-        date.setDate(date.getDate() + (7 * rule.interval));
-        break;
-      case 'weekday': {
-        let remaining = rule.interval;
-        while (remaining > 0) {
-          date.setDate(date.getDate() + 1);
-          const dayOfWeek = date.getDay();
-          if (dayOfWeek !== 0 && dayOfWeek !== 6) remaining--;
-        }
-        break;
-      }
-      case 'month':
-        addMonths(rule.interval);
-        break;
-      case 'year':
-        addMonths(12 * rule.interval);
-        break;
-    }
-
-    return this.stamp(date);
-  }
-
-  /**
-   * Build the next instance of a recurring task from the line that was just
-   * completed: unchecked again, completion date dropped, every date it carries
-   * moved forward one interval.
-   */
-  private nextOccurrence(completedLine: string, rule: RecurrenceRule): string {
-    let next = completedLine.replace(/^(\s*- \[)[\sxX\/](\])/, '$1 $2');
-    next = next.replace(/\s*✅ \d{4}-\d{2}-\d{2}/, '');
-
-    const base = rule.whenDone ? this.todayStamp() : null;
-    for (const emoji of ['📅', '⏳']) {
-      next = next.replace(
-        new RegExp(`(${emoji} )(\\d{4}-\\d{2}-\\d{2})`),
-        (_full, prefix: string, date: string) => `${prefix}${this.advanceDate(base ?? date, rule)}`
-      );
-    }
-
-    return next;
-  }
-
-  /**
-   * Add or remove the Tasks plugin's completion date (✅ YYYY-MM-DD) on a task
-   * line, so tasks completed from the calendar are stamped the same way the
-   * Tasks plugin stamps them.
-   */
-  private setCompletionDate(line: string, done: boolean): string {
-    const completionDate = /\s*✅ \d{4}-\d{2}-\d{2}/;
-
-    if (!done) {
-      return line.replace(completionDate, '');
-    }
-    if (completionDate.test(line)) {
-      return line; // Already stamped (e.g. by the Tasks plugin); leave it be
-    }
-
-    // A trailing block reference has to stay last, as it does in Tasks.
-    const blockRef = /(\s+\^[A-Za-z0-9-]+)\s*$/;
-    const stamp = `✅ ${this.todayStamp()}`;
-    return blockRef.test(line)
-      ? line.replace(blockRef, ` ${stamp}$1`)
-      : `${line.trimEnd()} ${stamp}`;
-  }
-
   // --- Handle Task Toggling ---
   async handleEventClick(info: EventClickArg) {
     const event = info.event;
@@ -824,6 +684,7 @@ export class CalendarView extends ItemView {
     }
 
     let recurred = false;
+    let unsupportedRule = false;
 
     try {
         await this.app.vault.process(file, (data) => {
@@ -844,7 +705,7 @@ export class CalendarView extends ItemView {
 
             // Completing stamps the line with a completion date; moving back to
             // in-progress or incomplete removes it again.
-            updatedLine = this.setCompletionDate(updatedLine, nextStatus === 'completed');
+            updatedLine = setCompletionDate(updatedLine, nextStatus === 'completed', stampDate(new Date()));
 
             // We still check this, but failure doesn't stop the optimistic UI update
             if (originalLine === updatedLine) {
@@ -858,10 +719,19 @@ export class CalendarView extends ItemView {
             // A recurring task spawns its next instance directly above the one
             // just completed, the way the Tasks plugin does.
             if (nextStatus === 'completed') {
-                const rule = this.parseRecurrence(updatedLine);
+                const rule = parseRecurrence(updatedLine);
                 if (rule) {
-                    lines.splice(lineNumber, 0, this.nextOccurrence(updatedLine, rule));
-                    recurred = true;
+                    const next = nextOccurrence(updatedLine, rule, stampDate(new Date()));
+                    // Reopening a completed task and completing it again would
+                    // otherwise write a second copy of the same future task.
+                    if (occurrenceAlreadyExists(lines[lineNumber - 1], next)) {
+                        console.log("Next occurrence already present, not adding another");
+                    } else {
+                        lines.splice(lineNumber, 0, next);
+                        recurred = true;
+                    }
+                } else if (hasRecurrenceMarker(updatedLine)) {
+                    unsupportedRule = true;
                 }
             }
 
@@ -869,14 +739,18 @@ export class CalendarView extends ItemView {
         });
 
         if (recurred) {
-            // The next instance shifts line numbers, and event ids encode them,
-            // so the calendar has to be rebuilt rather than patched in place.
             new Notice(`Task completed, next occurrence scheduled in ${file.basename}`);
-            this.refreshCalendarData();
+        } else if (unsupportedRule) {
+            new Notice("Unsupported recurrence rule, no next occurrence was created");
         } else {
             new Notice(`Task status set to ${nextStatus} in ${file.basename}`);
         }
-        // No refetch needed for optimistic update
+
+        // The optimistic update above only restyles the event. Adding or
+        // removing a completion date changes which date the task is placed on,
+        // and a new occurrence shifts the line numbers that event ids encode,
+        // so the calendar has to be rebuilt either way.
+        this.refreshCalendarData();
 
     } catch (error) {
         console.error(`Failed to toggle task status in file ${filePath}:`, error);
