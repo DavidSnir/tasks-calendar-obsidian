@@ -112,8 +112,21 @@ setting: tasks-calendar-completed-text-decoration
 
 */
 
-/* Root variables for Style Settings */
-:root {
+/*
+ * Variables for Style Settings.
+ *
+ * Scoped to `body`, not `:root`. Obsidian declares its own theme variables
+ * (--text-normal, --font-ui-small, --background-secondary-alt, ...) on <body>,
+ * so a variable declared on :root that references one of them resolves against
+ * <html>, where those names do not exist. That makes the whole custom property
+ * guaranteed-invalid, and the invalid value inherits down the entire tree --
+ * every var() reading it silently falls back to the property's initial value.
+ * Declaring here puts us on the same element as the names we reference.
+ *
+ * Specificity still leaves Style Settings (body.css-settings-manager) and the
+ * .theme-dark block below free to override these.
+ */
+body {
   /* General */
   --tasks-calendar-font-size: var(--font-ui-small);
   --tasks-calendar-event-padding: 5px;
