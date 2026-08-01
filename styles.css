@@ -53,9 +53,9 @@ section: Task Status Styles
 
 setting: tasks-calendar-event-text-main
   name: Default Event Text Color
-  description: Default text color for tasks (applied to all unless overridden by completed style).
+  description: Default text color for tasks (applied to all unless overridden by completed style). Follows the active theme by default. Note that a color set here applies to both light and dark mode.
   type: variable-color
-  default: "#404040"
+  default: var(--text-normal)
   format: hex
 
 setting: tasks-calendar-incomplete-bg
@@ -92,8 +92,8 @@ setting: tasks-calendar-completed-border
   format: hex
 
 setting: tasks-calendar-completed-opacity
-  name: Completed Task Opacity
-  description: Opacity for completed task events (0 to 1).
+  name: Completed Task Fade
+  description: How faded the text of a completed task appears (0 to 1). The background and border stay solid.
   type: variable-number-slider
   default: 0.7
   min: 0.1
@@ -120,8 +120,8 @@ setting: tasks-calendar-completed-text-decoration
   --tasks-calendar-event-margin: 3px;
   --tasks-calendar-day-cell-padding: 10px;
   --tasks-calendar-today-bg: var(--background-secondary-alt);
-  --tasks-calendar-event-text-main: #404040; /* Default Dark Gray */
-  
+  --tasks-calendar-event-text-main: var(--text-normal); /* Follows the active theme */
+
   /* Incomplete Tasks */
   --tasks-calendar-incomplete-bg: #dae5f0;
   --tasks-calendar-incomplete-border: #8ab4f8; /* A more visible blue for outline */
@@ -135,6 +135,31 @@ setting: tasks-calendar-completed-text-decoration
   --tasks-calendar-completed-border: #C8E6C9; /* Darker shade */
   --tasks-calendar-completed-opacity: 0.7;
   --tasks-calendar-completed-text-decoration: line-through;
+}
+
+/*
+ * Dark mode palette.
+ *
+ * The pastel backgrounds above are fixed light colors, so in dark mode they
+ * turn into bright islands and (for incomplete tasks) put light text on a light
+ * background. Each hue is carried over from the light palette but mixed against
+ * --background-primary, so the pills sit correctly on whatever background the
+ * active dark theme actually uses rather than assuming Obsidian's stock one.
+ *
+ * Deliberately `.theme-dark` and not `body.theme-dark`: Obsidian puts the class
+ * on <body>, and Style Settings injects user overrides as
+ * `body.css-settings-manager { ... }`. The lower specificity here means a user's
+ * customized colors still win.
+ */
+.theme-dark {
+  --tasks-calendar-incomplete-bg:     color-mix(in srgb, #8ab4f8 18%, var(--background-primary));
+  --tasks-calendar-incomplete-border: color-mix(in srgb, #8ab4f8 45%, var(--background-primary));
+
+  --tasks-calendar-inprogress-bg:     color-mix(in srgb, #E6E6AA 16%, var(--background-primary));
+  --tasks-calendar-inprogress-border: color-mix(in srgb, #E6E6AA 42%, var(--background-primary));
+
+  --tasks-calendar-completed-bg:      color-mix(in srgb, #C8E6C9 14%, var(--background-primary));
+  --tasks-calendar-completed-border:  color-mix(in srgb, #C8E6C9 40%, var(--background-primary));
 }
 
 /***********************/
@@ -155,6 +180,17 @@ setting: tasks-calendar-completed-text-decoration
 
 /* Main container layout */
 .tasks-calendar-container {
+    /* Map FullCalendar's own theming variables onto Obsidian's. Without this,
+       FullCalendar falls back to its light-mode defaults (#ddd gridlines on a
+       #fff page) and the grid glows white in a dark vault. */
+    --fc-border-color: var(--background-modifier-border);
+    --fc-page-bg-color: var(--background-primary);
+    --fc-neutral-bg-color: var(--background-secondary);
+    --fc-neutral-text-color: var(--text-muted);
+    --fc-today-bg-color: transparent; /* we paint today ourselves, see --tasks-calendar-today-bg */
+    --fc-event-text-color: var(--text-normal);
+    --fc-highlight-color: var(--text-selection);
+
     display: flex;
     flex-direction: column;
     height: 100%; /* Fill the available vertical space */
@@ -268,13 +304,10 @@ setting: tasks-calendar-completed-text-decoration
 
 /* === Status Specific Styling === */
 
-/* Set text color for incomplete tasks to ensure readability with transparent background */
-.tasks-calendar-container .fc-daygrid-event.task-incomplete .fc-event-main,
-.tasks-calendar-container .fc-list-event.task-incomplete .fc-event-main,
-.tasks-calendar-container .fc-daygrid-event:not(.task-inprogress):not(.task-completed) .fc-event-main,
-.tasks-calendar-container .fc-list-event:not(.task-inprogress):not(.task-completed) .fc-event-main {
-  color: var(--text-normal);
-}
+/* Incomplete tasks intentionally have no text-color rule of their own: they
+   inherit --tasks-calendar-event-text-main like every other status. Forcing
+   var(--text-normal) here used to put near-white text on the fixed pastel blue
+   background in dark mode. */
 
 /* Style the task description to be normal weight */
 .tasks-calendar-event .task-description {
@@ -315,12 +348,19 @@ setting: tasks-calendar-completed-text-decoration
 .tasks-calendar-container .fc-list-event.task-completed {
   background-color: var(--tasks-calendar-completed-bg);
   border-color: var(--tasks-calendar-completed-border);
-  opacity: var(--tasks-calendar-completed-opacity);
 }
 
+/* The fade applies to the text only. Applying it to the whole event dimmed the
+   text on top of the strikethrough, which is what made completed tasks hard to
+   read; the border and background now stay solid. */
 .tasks-calendar-container .fc-daygrid-event.task-completed .fc-event-main,
 .tasks-calendar-container .fc-list-event.task-completed .fc-event-main {
   text-decoration: var(--tasks-calendar-completed-text-decoration);
+  color: color-mix(
+    in srgb,
+    var(--tasks-calendar-event-text-main) calc(var(--tasks-calendar-completed-opacity) * 100%),
+    transparent
+  );
 }
 
 /***************************/
@@ -342,12 +382,12 @@ setting: tasks-calendar-completed-text-decoration
   z-index: 9999 !important;
   pointer-events: none !important;
   opacity: 0.8 !important;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3) !important;
+  box-shadow: var(--shadow-s) !important;
 }
 
 /* Improve drag feedback */
 .tasks-calendar-container .fc-event-selected {
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3) !important;
+  box-shadow: var(--shadow-s) !important;
 }
 
 /*************************/
