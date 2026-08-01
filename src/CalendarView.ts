@@ -1,4 +1,4 @@
-import { ItemView, WorkspaceLeaf, TFile, Notice, setIcon } from "obsidian";
+import { ItemView, WorkspaceLeaf, TFile, Notice, setIcon, Keymap } from "obsidian";
 import { Calendar, EventDropArg, EventClickArg } from '@fullcalendar/core';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import interactionPlugin from '@fullcalendar/interaction'; // For drag/drop later
@@ -88,9 +88,11 @@ export class CalendarView extends ItemView {
       snapDuration: '1 day', // Snap to day boundaries
       dragRevertDuration: 200, // Faster revert animation
       events: taskEvents, // Set initial events
-      eventClick: (info) => { 
-        // Only handle clicks on actual tasks, not file headers
-        if (!info.event.extendedProps.isFileHeader) {
+      eventClick: (info) => {
+        // File headers open the note; tasks cycle their status.
+        if (info.event.extendedProps.isFileHeader) {
+          this.openHeaderFile(info);
+        } else {
           this.handleEventClick(info);
         }
       },
@@ -412,13 +414,15 @@ export class CalendarView extends ItemView {
       }
     }
 
-    // Group tasks by file and date to create file headers
+    // Group tasks by file and date to create file headers.
+    // Keyed by full path, not basename: two files can share a basename, and a
+    // header has to point at exactly one file now that it is clickable.
     const tasksByFileAndDate = new Map<string, Map<string, any[]>>();
-    
+
     for (const task of allTasks) {
       if (!task.start) continue; // Skip tasks without dates
-      
-      const fileKey = task.extendedProps.fileName;
+
+      const fileKey = task.extendedProps.filePath;
       const dateKey = task.start;
       
       if (!tasksByFileAndDate.has(fileKey)) {
@@ -435,19 +439,21 @@ export class CalendarView extends ItemView {
 
     // Create file header events for each file/date combination and update task sortOrder
     let fileIndex = 0;
-    for (const [fileName, dateMap] of tasksByFileAndDate) {
+    for (const [filePath, dateMap] of tasksByFileAndDate) {
       const baseSort = fileIndex * 1000; // Give each file a distinct range
-      
+
       for (const [date, tasks] of dateMap) {
+        const fileName = tasks[0].extendedProps.fileName; // Basename, for display
         // Create header event with file-specific sortOrder
         const headerEvent = {
-          id: `header-${fileName}-${date}`,
+          id: `header-${filePath}-${date}`,
           title: fileName,
           start: date,
           allDay: true,
           classNames: ['task-file-header'],
           extendedProps: {
             fileName: fileName,
+            filePath: filePath, // Used to open the note when the header is clicked
             isFileHeader: true,
             isTask: false,
             sortOrder: baseSort + 100, // Header comes first for this file
@@ -610,7 +616,24 @@ export class CalendarView extends ItemView {
     }
   }
 
-  // --- Handle Task Toggling --- 
+  // --- Open the note behind a file header ---
+  async openHeaderFile(info: EventClickArg) {
+    const filePath = info.event.extendedProps.filePath;
+    if (!filePath) return;
+
+    const file = this.app.vault.getAbstractFileByPath(filePath);
+    if (!(file instanceof TFile)) {
+      new Notice(`Could not find ${filePath}`);
+      return;
+    }
+
+    // Keymap.isModEvent honours the usual Obsidian modifiers, so cmd/ctrl-click
+    // and middle-click open in a new tab exactly as they do elsewhere.
+    const newLeaf = Keymap.isModEvent(info.jsEvent);
+    await this.app.workspace.getLeaf(newLeaf).openFile(file);
+  }
+
+  // --- Handle Task Toggling ---
   async handleEventClick(info: EventClickArg) {
     const event = info.event;
     const currentStatus: TaskStatus = event.extendedProps.status || 'incomplete'; 

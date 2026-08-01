@@ -8,6 +8,7 @@ A simple calendar view for Obsidian to visualize tasks with due dates.
 *   Uses completion date `✅ YYYY-MM-DD` for completed tasks if available.
 *   Falls back to scheduled date `⏳ YYYY-MM-DD` if due date is missing.
 *   Supports basic task status toggling (incomplete -> in-progress -> completed -> incomplete) by clicking.
+*   Click a file header to open that note (cmd/ctrl-click opens it in a new tab).
 *   Allows dragging tasks to change their due date.
 *   Customizable appearance via Style Settings plugin (colors, fonts, etc.).
 *   Optional RTL text direction support.

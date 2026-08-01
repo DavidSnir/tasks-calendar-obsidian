@@ -633,7 +633,7 @@ body {
   box-shadow: none !important;
   padding: 0 !important;
   margin: 8px 4px 4px 4px !important;
-  cursor: default;
+  cursor: pointer; /* Clicking the header opens the note */
 }
 
 .tasks-calendar-container .fc-daygrid-event.task-file-header .fc-event-main {
@@ -646,7 +646,7 @@ body {
   opacity: 1 !important;
   padding: 2px 0 !important;
   box-shadow: none !important;
-  cursor: default !important;
+  cursor: pointer !important;
 }
 
 /* RTL support for file headers */
@@ -660,14 +660,15 @@ body {
   text-align: start !important;
 }
 
-.tasks-calendar-container .fc-daygrid-event.task-file-header:hover,
+/* Headers open their note on click, so give them a link-like affordance.
+   The !important flags are needed to beat the base header rules above, which
+   force a transparent background and --text-normal with !important. */
 .tasks-calendar-container .fc-daygrid-event.task-file-header:hover .fc-event-main,
-.tasks-calendar-container .fc-daygrid-event.task-file-header:focus,
 .tasks-calendar-container .fc-daygrid-event.task-file-header:focus .fc-event-main {
-  background-color: var(--background-secondary);
-  border-color: var(--background-modifier-border);
-  box-shadow: none;
-  cursor: default;
+  color: var(--text-accent) !important;
+  text-decoration: underline !important;
+  text-underline-offset: 2px;
+  cursor: pointer !important;
 }
 
 /* Task count indicator in file headers */
@@ -677,13 +678,11 @@ body {
   font-weight: normal;
 }
 
-/* Make file headers non-draggable */
-.tasks-calendar-container .fc-daygrid-event.task-file-header {
-  cursor: default !important;
-}
-
+/* Headers are not draggable (handleEventDrop reverts them), but they are
+   clickable, so the cursor stays a pointer rather than reverting to default. */
+.tasks-calendar-container .fc-daygrid-event.task-file-header,
 .tasks-calendar-container .fc-daygrid-event.task-file-header .fc-event-main {
-  cursor: default !important;
+  cursor: pointer !important;
 }
 
 /* Ensure regular tasks have proper indentation relative to file headers */
