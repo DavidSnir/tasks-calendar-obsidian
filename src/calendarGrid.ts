@@ -73,7 +73,6 @@ export interface RenderState {
   today: string;
   tasks: Map<string, CalendarTask>;
   cells: Map<string, CellGroup[]>;
-  showFileName: boolean;
 }
 
 const WEEKDAY_FMT = new Intl.DateTimeFormat('en-US', { weekday: 'short' });
@@ -159,10 +158,6 @@ export class CalendarGrid {
         const eventEl = eventsEl.createDiv('tc-event');
         eventEl.dataset.taskId = task.id;
         eventEl.addClass(`task-${task.status}`);
-
-        if (state.showFileName) {
-          eventEl.createSpan({ cls: 'task-file-name', text: task.fileName });
-        }
         eventEl.createSpan({ cls: 'task-description', text: task.description });
       }
     }

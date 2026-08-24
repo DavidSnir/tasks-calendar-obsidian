@@ -52,7 +52,6 @@ Note: this plugin reads and writes the common Tasks emoji fields but is not buil
 
 ## Settings
 
-- **Show file name on events** — display the source note above each task description.
 - **Start week on Sunday** — Sunday or Monday first columns.
 - **Enable RTL layout** — right-to-left rendering for Hebrew, Arabic, etc.
 - **Style Settings** — colors, fonts, padding, completed-task fade, and more via the [Style Settings](https://github.com/mgmeyers/obsidian-style-settings) plugin.

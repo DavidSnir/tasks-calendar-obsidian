@@ -2,14 +2,12 @@ import { App, Plugin, PluginSettingTab, Setting } from 'obsidian';
 import { CalendarView, CALENDAR_VIEW_TYPE } from './src/CalendarView';
 
 export interface TasksCalendarSettings {
-	showFileName: boolean;
 	enableRtl: boolean;
 	startWeekOnSunday: boolean;
 	textDirection: 'ltr' | 'rtl';
 }
 
 export const DEFAULT_SETTINGS: TasksCalendarSettings = {
-	showFileName: true,
 	enableRtl: false,
 	startWeekOnSunday: true,
 	textDirection: 'ltr',
@@ -128,17 +126,6 @@ class TasksCalendarSettingTab extends PluginSettingTab {
 		containerEl.empty();
 
 		containerEl.createEl('h2', { text: 'Tasks Calendar Settings' });
-
-		new Setting(containerEl)
-			.setName('Show file name on events')
-			.setDesc('Display the source file name above the task description on the calendar.')
-			.addToggle((toggle) =>
-				toggle.setValue(this.plugin.settings.showFileName).onChange(async (value) => {
-					this.plugin.settings.showFileName = value;
-					await this.plugin.saveSettings();
-					await this.plugin.refreshViews(false);
-				})
-			);
 
 		new Setting(containerEl)
 			.setName('Start week on Sunday')

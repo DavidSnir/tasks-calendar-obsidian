@@ -299,12 +299,6 @@ body {
   touch-action: pan-y; /* Vertical swipes scroll; drags start after long-press. */
 }
 
-.tc-file-name {
-  display: block;
-  font-weight: normal;
-  opacity: 0.75;
-}
-
 .task-description {
   font-weight: normal;
 }

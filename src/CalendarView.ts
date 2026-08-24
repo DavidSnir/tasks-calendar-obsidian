@@ -106,7 +106,6 @@ export class CalendarView extends ItemView {
       today: stampDate(new Date()),
       tasks: this.tasksById,
       cells: buildCells(allTasks),
-      showFileName: this.plugin.settings.showFileName,
     });
     this.updateNavigationTitle();
   }
