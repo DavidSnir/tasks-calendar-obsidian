@@ -16,6 +16,23 @@ import {
 
 const CHECKBOX = /^(\s*- \[)[\sxX\/](\].*)/;
 
+/** How far a line may drift from its scanned index before we give up. */
+const RELOCATE_WINDOW = 5;
+
+/**
+ * Locate a task's line when its stored index may have gone stale: completing
+ * a recurring task spawns its next occurrence directly above, shifting every
+ * later line by one. The exact raw line as scanned is the identity check.
+ */
+export function locateLine(lines: string[], rawLine: string, hint: number): number | null {
+  if (lines[hint] === rawLine) return hint;
+  for (let distance = 1; distance <= RELOCATE_WINDOW; distance++) {
+    if (lines[hint - distance] === rawLine) return hint - distance;
+    if (lines[hint + distance] === rawLine) return hint + distance;
+  }
+  return null;
+}
+
 const DUE_DATE_FIELD = /(📅 )(\d{4}-\d{2}-\d{2})/;
 const SCHEDULED_DATE_FIELD = /(⏳ )(\d{4}-\d{2}-\d{2})/;
 const COMPLETION_DATE_FIELD = /(✅ )(\d{4}-\d{2}-\d{2})/;

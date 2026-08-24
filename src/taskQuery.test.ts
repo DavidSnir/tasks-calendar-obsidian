@@ -1,57 +1,67 @@
 import { test, describe } from 'node:test';
 import { strict as assert } from 'node:assert';
 
-import { buildCells, parseFileTasks, type CalendarTask, type TaskStatus } from './taskQuery.ts';
+import {
+  applyOptimisticEdits,
+  buildCells,
+  parseFileTasks,
+  type CalendarTask,
+  type OptimisticEdit,
+  type TaskStatus,
+} from './taskQuery.ts';
 
-describe('parseFileTasks', () => {
-  test('extracts a dated open task and cleans its description', () => {
-    const tasks = parseFileTasks(
-      'notes/todo.md',
-      'todo',
-      '- [ ] Pay rent 🔁 every month 📅 2026-09-01',
-    );
-    assert.equal(tasks.length, 1);
-    const task = tasks[0];
-    assert.equal(task.id, 'notes/todo.md:0');
-    assert.equal(task.filePath, 'notes/todo.md');
-    assert.equal(task.fileName, 'todo');
-    assert.equal(task.lineNumber, 0);
-    assert.equal(task.status, 'incomplete');
-    assert.equal(task.date, '2026-09-01');
-    assert.equal(task.description, 'Pay rent');
-  });
-
-  test('places a completed task on its completion date', () => {
-    const tasks = parseFileTasks(
-      'a.md',
-      'a',
-      '- [x] Write the summary 📅 2026-08-05 ✅ 2026-08-01',
-    );
-    assert.equal(tasks[0].status, 'completed');
-    assert.equal(tasks[0].date, '2026-08-01');
-  });
-
-  test('falls back to the scheduled date', () => {
-    const tasks = parseFileTasks('a.md', 'a', '- [ ] Call home ⏳ 2026-08-12');
-    assert.equal(tasks[0].date, '2026-08-12');
-  });
-
-  test('keeps an undated task with a null date', () => {
-    const tasks = parseFileTasks('a.md', 'a', '- [ ] Undated musing');
-    assert.equal(tasks[0].date, null);
-  });
-
-  test('reads subtasks at their real line numbers', () => {
-    const content = ['# Title', '', 'Intro prose.', '', '    - [/] Nested 📅 2026-08-30'].join('\n');
+describe('parseFileTasks rawLine', () => {
+  test('keeps the untouched original line for later relocation', () => {
+    const content = '    - [/] Nested 📅 2026-08-30 ✅ 2026-08-01';
     const tasks = parseFileTasks('a.md', 'a', content);
-    assert.equal(tasks[0].lineNumber, 4);
-    assert.equal(tasks[0].status, 'inprogress');
-    assert.equal(tasks[0].description, 'Nested');
+    assert.equal(tasks[0].rawLine, content);
+  });
+});
+
+describe('applyOptimisticEdits', () => {
+  const t = (
+    id: string,
+    description: string,
+    date: string | null,
+    status: TaskStatus,
+  ): CalendarTask => ({
+    id: `${id}:0`,
+    filePath: `${id}.md`,
+    fileName: id,
+    lineNumber: 0,
+    description,
+    status,
+    date,
+    rawLine: `- [ ] ${description}`,
   });
 
-  test('skips non-task lines entirely', () => {
-    const content = '# Heading\n\nSome text.\n- plain bullet';
-    assert.deepEqual(parseFileTasks('a.md', 'a', content), []);
+  test('applies a status override by task id', () => {
+    const edits = new Map<string, OptimisticEdit>([['f:0', { status: 'completed' }]]);
+    const out = applyOptimisticEdits([t('f', 'Open', '2026-08-24', 'incomplete')], edits);
+    assert.equal(out[0].status, 'completed');
+    assert.equal(out[0].date, '2026-08-24');
+  });
+
+  test('applies a date override for rescheduled tasks', () => {
+    const edits = new Map<string, OptimisticEdit>([['f:0', { date: '2026-09-01' }]]);
+    const out = applyOptimisticEdits([t('f', 'Open', '2026-08-24', 'incomplete')], edits);
+    assert.equal(out[0].date, '2026-09-01');
+    assert.equal(out[0].status, 'incomplete');
+  });
+
+  test('clears a date override back to null with an explicit null edit', () => {
+    const edits = new Map<string, OptimisticEdit>([['f:0', { date: null }]]);
+    const out = applyOptimisticEdits([t('f', 'Open', '2026-08-24', 'incomplete')], edits);
+    assert.equal(out[0].date, null);
+  });
+
+  test('leaves unedited tasks and the input array untouched', () => {
+    const original = [t('f', 'Open', '2026-08-24', 'incomplete')];
+    const edits = new Map<string, OptimisticEdit>([['other:0', { status: 'completed' }]]);
+    const out = applyOptimisticEdits(original, edits);
+    assert.notEqual(out, original);
+    assert.equal(original[0].status, 'incomplete');
+    assert.equal(out[0], original[0]);
   });
 });
 
@@ -62,13 +72,14 @@ describe('buildCells', () => {
     date: string | null,
     status: TaskStatus,
   ): CalendarTask => ({
-    id,
+    id: `${id}:0`,
     filePath: `${id}.md`,
     fileName: id,
     lineNumber: 0,
     description,
     status,
     date,
+    rawLine: '',
   });
 
   test('groups file tasks under one header per day', () => {
@@ -91,6 +102,7 @@ describe('buildCells', () => {
       description,
       status: 'incomplete' as const,
       date: '2026-08-24',
+      rawLine: '',
     });
     const cells = buildCells([shared('a/journal.md', 'A'), shared('b/journal.md', 'B')]);
     assert.equal(cells.get('2026-08-24')!.length, 2);

@@ -7,8 +7,15 @@ import {
 } from "./calendarGrid";
 import { addDays, parseDate } from "./dateGrid";
 import { stampDate, type TaskStatus } from "./taskLines";
-import { buildCells, parseFileTasks, type CalendarTask } from "./taskQuery";
-import { applyStatusToggle, rescheduleLine, type RecurrenceOutcome } from "./taskMutations";
+import {
+  applyOptimisticEdits,
+  buildCells,
+  parseFileTasks,
+  type CalendarTask,
+  type OptimisticEdit,
+} from "./taskQuery";
+import { applyStatusToggle, locateLine, rescheduleLine } from "./taskMutations";
+import { CoalescedRunner } from "./singleFlight";
 
 export const CALENDAR_VIEW_TYPE = "tasks-calendar-view";
 
@@ -23,6 +30,15 @@ function stepDays(range: GridRange): number {
   return range === 'week' ? 7 : range === '3day' ? 1 : 0;
 }
 
+/**
+ * Thin shell around three collaborators (ADR 0005):
+ *  - CalendarGrid renders whatever model it is handed;
+ *  - optimisticEdits overlays not-yet-written user changes so every click or
+ *    drop repaints instantly, never waiting for I/O;
+ *  - writes run one at a time on a promise chain (notes must never be edited
+ *    concurrently), each guarded by locateLine against stale indices;
+ *  - full vault rescans are coalesced into at most one trailing pass.
+ */
 export class CalendarView extends ItemView {
   private plugin: TasksCalendarPlugin;
   private grid: CalendarGrid | null = null;
@@ -31,13 +47,20 @@ export class CalendarView extends ItemView {
 
   private range: GridRange = 'month';
   private anchor: string = stampDate(new Date());
+
+  /** Last full scan of the vault; the rendering source of truth between scans. */
+  private lastTasks: CalendarTask[] = [];
+  /** UI-only edits awaiting their write; cleared whenever a scan lands. */
+  private optimisticEdits = new Map<string, OptimisticEdit>();
   private tasksById: Map<string, CalendarTask> = new Map();
-  /** Guards against overlapping writes while a rescan is still pending. */
-  private syncInProgress = false;
+
+  private writeChain: Promise<void> = Promise.resolve();
+  private rescan: CoalescedRunner;
 
   constructor(leaf: WorkspaceLeaf, plugin: TasksCalendarPlugin) {
     super(leaf);
     this.plugin = plugin;
+    this.rescan = new CoalescedRunner(() => this.loadAndRender());
   }
 
   getViewType(): string {
@@ -63,14 +86,14 @@ export class CalendarView extends ItemView {
     }
 
     this.grid = new CalendarGrid(this.gridContainer, {
-      onTaskClick: (taskId) => void this.handleTaskClick(taskId),
+      onTaskClick: (taskId) => this.handleTaskClick(taskId),
       onHeaderClick: (filePath, evt) => void this.openHeaderFile(filePath, evt),
       onTaskDropped: (taskId, _fromDate, toDate) =>
-        void this.handleTaskDrop(taskId, toDate),
+        this.handleTaskDrop(taskId, toDate),
     });
 
     this.setViewLinkActive('month');
-    await this.refreshCalendarData();
+    this.rescan.request();
   }
 
   /** Rebuild everything; used when structural settings change. */
@@ -85,7 +108,12 @@ export class CalendarView extends ItemView {
     this.grid = null;
   }
 
-  async refreshCalendarData(): Promise<void> {
+  /** Ask for a fresh vault scan; bursts collapse into one trailing pass. */
+  refreshCalendarData(): void {
+    this.rescan.request();
+  }
+
+  private async loadAndRender(): Promise<void> {
     if (!this.grid || !this.gridContainer) return;
 
     const files = this.app.vault.getMarkdownFiles();
@@ -100,7 +128,18 @@ export class CalendarView extends ItemView {
       }
     }
 
-    this.tasksById = new Map(allTasks.map((task) => [task.id, task]));
+    this.lastTasks = allTasks;
+    // Disk truth wins over anything still optimistic once a scan lands.
+    this.optimisticEdits.clear();
+    this.renderFromModel();
+  }
+
+  /** Repaint from memory: last scan plus whatever edits are not written yet. */
+  private renderFromModel(): void {
+    if (!this.grid || !this.gridContainer) return;
+
+    const tasks = applyOptimisticEdits(this.lastTasks, this.optimisticEdits);
+    this.tasksById = new Map(tasks.map((task) => [task.id, task]));
 
     this.grid.render({
       range: this.range,
@@ -108,34 +147,81 @@ export class CalendarView extends ItemView {
       firstDayOfWeek: this.plugin.settings.startWeekOnSunday ? 0 : 1,
       today: stampDate(new Date()),
       tasks: this.tasksById,
-      cells: buildCells(allTasks),
+      cells: buildCells(tasks),
     });
     this.updateNavigationTitle();
   }
 
+  /** Effective status/date of a task: scanned state plus pending UI edits. */
+  private clientEffective(
+    taskId: string,
+  ): { status: TaskStatus; date: string | null } | undefined {
+    const task = this.tasksById.get(taskId);
+    if (!task) return undefined;
+    const edit = this.optimisticEdits.get(taskId) ?? {};
+    return {
+      status: edit.status ?? task.status,
+      date: edit.date !== undefined ? edit.date : task.date,
+    };
+  }
+
   // --- Interactions ----------------------------------------------------------
 
-  private async handleTaskClick(taskId: string): Promise<void> {
-    const task = this.tasksById.get(taskId);
-    if (!task || this.syncInProgress) return;
-    this.syncInProgress = true;
+  private handleTaskClick(taskId: string): void {
+    const effective = this.clientEffective(taskId);
+    if (!effective) return;
 
-    const nextStatus = NEXT_STATUS[task.status];
-    // Optimistic restyle while the file write is in flight.
-    const eventEls = this.findEventEls(taskId);
-    this.restyleEvents(eventEls, nextStatus);
+    const nextStatus = NEXT_STATUS[effective.status];
+    // Completing moves a task onto today (the stamp's placement rule);
+    // leaving completed hands placement back to due/scheduled.
+    const edit: OptimisticEdit = {
+      status: nextStatus,
+      date: nextStatus === 'completed' ? stampDate(new Date()) : null,
+    };
+
+    this.optimisticEdits.set(taskId, { ...this.optimisticEdits.get(taskId), ...edit });
+    this.renderFromModel(); // Instant feedback; never waits on I/O.
+
+    this.writeChain = this.writeChain.then(() =>
+      this.writeToggle(taskId, nextStatus),
+    );
+  }
+
+  private handleTaskDrop(taskId: string, toDate: string): void {
+    const effective = this.clientEffective(taskId);
+    if (!effective || effective.date === toDate) return;
+
+    this.optimisticEdits.set(taskId, {
+      ...this.optimisticEdits.get(taskId),
+      date: toDate,
+    });
+    this.renderFromModel(); // The pill lands in its new cell immediately.
+
+    this.writeChain = this.writeChain.then(() =>
+      this.writeReschedule(taskId, effective.status, toDate),
+    );
+  }
+
+  // --- Serialized writes -----------------------------------------------------
+
+  /**
+   * One serialized toggle write. The chain guarantees no other mutation runs
+   * concurrently; locateLine re-finds the line in case an earlier write in
+   * the same burst (e.g. a recurrence spawn) shifted it.
+   */
+  private async writeToggle(taskId: string, nextStatus: TaskStatus): Promise<void> {
+    const task = this.tasksById.get(taskId);
+    if (!task) return;
 
     try {
       const file = this.requireFile(task.filePath);
       let changed = false;
-      let recurrence: RecurrenceOutcome | undefined;
+      let recurrence;
       await this.app.vault.process(file, (data) => {
-        const toggle = applyStatusToggle(
-          data.split('\n'),
-          task.lineNumber,
-          nextStatus,
-          stampDate(new Date()),
-        );
+        const lines = data.split('\n');
+        const at = locateLine(lines, task.rawLine, task.lineNumber);
+        if (at === null) throw new Error('The task moved within its note.');
+        const toggle = applyStatusToggle(lines, at, nextStatus, stampDate(new Date()));
         changed = toggle.changed;
         recurrence = toggle.recurrence;
         return toggle.lines.join('\n');
@@ -146,59 +232,43 @@ export class CalendarView extends ItemView {
           new Notice(`Task completed, next occurrence scheduled in ${file.basename}`);
         } else if (recurrence === 'unsupported') {
           new Notice('Unsupported recurrence rule, no next occurrence was created');
-        } else {
+        } else if (nextStatus !== 'inprogress') {
           new Notice(`Task status set to ${nextStatus} in ${file.basename}`);
         }
       }
-      await this.refreshCalendarData();
     } catch (error) {
       console.error('Tasks Calendar: failed to toggle task', error);
       new Notice(`Error toggling task status: ${(error as Error).message}`);
-      // The optimistic restyle may be a lie now; repaint from disk truth.
-      await this.refreshCalendarData();
-    } finally {
-      this.syncInProgress = false;
+      this.optimisticEdits.delete(taskId); // UI lied; the rescan will correct it.
     }
+    this.rescan.request();
   }
 
-  private findEventEls(taskId: string): NodeListOf<HTMLElement> {
-    return this.gridContainer?.querySelectorAll(
-      `.tc-event[data-task-id="${CSS.escape(taskId)}"]`,
-    ) as NodeListOf<HTMLElement>;
-  }
-
-  private restyleEvents(
-    els: NodeListOf<HTMLElement> | undefined,
+  private async writeReschedule(
+    taskId: string,
     status: TaskStatus,
-  ): void {
-    els?.forEach((el) => {
-      el.dataset.status = status;
-      el.removeClass('task-incomplete', 'task-inprogress', 'task-completed');
-      el.addClass(`task-${status}`);
-    });
-  }
-
-  private async handleTaskDrop(taskId: string, toDate: string): Promise<void> {
+    toDate: string,
+  ): Promise<void> {
     const task = this.tasksById.get(taskId);
-    // A drop during a pending toggle would reschedule a stale line number.
-    if (!task || this.syncInProgress) return;
-    this.syncInProgress = true;
+    if (!task) return;
 
     try {
       const file = this.requireFile(task.filePath);
       await this.app.vault.process(file, (data) => {
         const lines = data.split('\n');
-        lines[task.lineNumber] = rescheduleLine(lines[task.lineNumber], task.status, toDate);
+        const at = locateLine(lines, task.rawLine, task.lineNumber);
+        if (at === null) throw new Error('The task moved within its note.');
+        lines[at] = rescheduleLine(lines[at], status, toDate);
         return lines.join('\n');
       });
       new Notice(`Task moved to ${toDate} in ${file.basename}`);
     } catch (error) {
       console.error('Tasks Calendar: failed to reschedule task', error);
       new Notice(`Error updating task: ${(error as Error).message}`);
+      this.optimisticEdits.delete(taskId); // Snap back to where the file says.
     }
     // Re-render from disk so headers, counts and placement stay truthful.
-    await this.refreshCalendarData();
-    this.syncInProgress = false;
+    this.rescan.request();
   }
 
   private requireFile(filePath: string): TFile {
@@ -236,7 +306,7 @@ export class CalendarView extends ItemView {
     todayLink.textContent = "Today";
     todayLink.addEventListener("click", () => {
       this.anchor = stampDate(new Date());
-      void this.refreshCalendarData();
+      this.renderFromModel();
     });
 
     const nextArrow = leftControls.createSpan("nav-arrow");
@@ -261,7 +331,7 @@ export class CalendarView extends ItemView {
     link.addEventListener("click", () => {
       this.range = range;
       this.setViewLinkActive(range);
-      void this.refreshCalendarData();
+      this.renderFromModel();
     });
   }
 
@@ -278,7 +348,7 @@ export class CalendarView extends ItemView {
     } else {
       this.anchor = addDays(this.anchor, stepDays(this.range) * direction);
     }
-    void this.refreshCalendarData();
+    this.renderFromModel();
   }
 
   private updateNavigationTitle(): void {

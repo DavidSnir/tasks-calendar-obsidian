@@ -45,3 +45,18 @@ recurrence spawn, reschedule). All line-level transforms live in
 **Event id** — `"<file path>:<line number>"`. Encodes where a task lives so a
 drop or click can find the exact line. Line-number ids are why any edit that
 inserts or removes lines must rebuild the calendar.
+
+**Raw line** — The untouched markdown line as captured at scan time
+(`CalendarTask.rawLine`). The identity check behind line relocation: indexes
+go stale the moment an edit inserts lines, exact text does not.
+
+**Optimistic edits** — UI-only overlays (`status`/`date` per task id) folded
+into every render so clicks and drops paint instantly. Cleared whenever a
+scan lands, because disk truth wins.
+
+**Write chain** — The promise queue serializing all note mutations. Note
+writes must never overlap; everything else may.
+
+**Rescan** — A full vault read rebuilding the task model. Bursts are
+coalesced into one trailing pass by the `CoalescedRunner`; navigation never
+triggers one.

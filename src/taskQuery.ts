@@ -14,6 +14,8 @@ export interface CalendarTask {
   filePath: string;
   fileName: string;
   lineNumber: number;
+  /** The untouched markdown line as scanned; anchors relocation after edits shift line numbers. */
+  rawLine: string;
   description: string;
   status: TaskStatus;
   /** The day the task renders on, or null when it carries no date. */
@@ -76,6 +78,7 @@ export function parseFileTasks(
       filePath,
       fileName,
       lineNumber: i,
+      rawLine: lines[i],
       description,
       status,
       date: eventDateFor(status, match[2]),
@@ -90,6 +93,33 @@ const STATUS_RANK: Record<TaskStatus, number> = {
   incomplete: 2,
   completed: 3,
 };
+
+/** A not-yet-written change the user made in the UI. */
+export interface OptimisticEdit {
+  status?: TaskStatus;
+  /** An explicit null clears a task's date override (back to due/scheduled). */
+  date?: string | null;
+}
+
+/**
+ * Fold UI-only edits over the last scanned tasks so renders can happen
+ * instantly, without waiting for writes or rescans. Pure: returns new task
+ * objects for edited entries and never mutates the input.
+ */
+export function applyOptimisticEdits(
+  tasks: CalendarTask[],
+  edits: Map<string, OptimisticEdit>,
+): CalendarTask[] {
+  return tasks.map((task) => {
+    const edit = edits.get(task.id);
+    if (!edit) return task;
+    return {
+      ...task,
+      status: edit.status ?? task.status,
+      date: edit.date !== undefined ? edit.date : task.date,
+    };
+  });
+}
 
 /**
  * Group dated tasks into per-day cells: one CellGroup per file, files kept in
