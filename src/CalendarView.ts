@@ -54,10 +54,11 @@ export class CalendarView extends ItemView {
     this.createInlineNavigation(navEl);
 
     this.gridContainer = container.createDiv("tasks-calendar-container");
+    // Text-direction only: the class scopes RTL styling to task text, it must
+    // not mirror the grid layout itself.
     if (this.plugin.settings.enableRtl) {
       this.gridContainer.addClass("tasks-calendar-rtl-enabled");
     }
-    this.gridContainer.setAttr("dir", this.plugin.settings.textDirection);
 
     this.grid = new CalendarGrid(this.gridContainer, {
       onTaskClick: (taskId) => void this.handleTaskClick(taskId),

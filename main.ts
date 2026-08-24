@@ -4,13 +4,11 @@ import { CalendarView, CALENDAR_VIEW_TYPE } from './src/CalendarView';
 export interface TasksCalendarSettings {
 	enableRtl: boolean;
 	startWeekOnSunday: boolean;
-	textDirection: 'ltr' | 'rtl';
 }
 
 export const DEFAULT_SETTINGS: TasksCalendarSettings = {
 	enableRtl: false,
 	startWeekOnSunday: true,
-	textDirection: 'ltr',
 };
 
 export default class TasksCalendarPlugin extends Plugin {
@@ -139,12 +137,11 @@ class TasksCalendarSettingTab extends PluginSettingTab {
 			);
 
 		new Setting(containerEl)
-			.setName('Enable RTL (right-to-left) layout')
-			.setDesc('Render the calendar in RTL mode for languages like Hebrew or Arabic.')
+			.setName('Enable RTL (right-to-left) task text')
+			.setDesc('Align task text right-to-left inside day cells, for languages like Hebrew or Arabic.')
 			.addToggle((toggle) =>
 				toggle.setValue(this.plugin.settings.enableRtl).onChange(async (value) => {
 					this.plugin.settings.enableRtl = value;
-					this.plugin.settings.textDirection = value ? 'rtl' : 'ltr';
 					await this.plugin.saveSettings();
 					await this.plugin.refreshViews(true);
 				})
