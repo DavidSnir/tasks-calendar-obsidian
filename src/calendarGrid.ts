@@ -13,6 +13,12 @@ import {
   weekWindow,
 } from './dateGrid.ts';
 import type { CalendarTask, CellGroup } from './taskQuery.ts';
+import {
+  HAPTIC_DRAG_START_MS,
+  HAPTIC_DROP_MS,
+  HAPTIC_TARGET_CHANGE_MS,
+  pulse,
+} from './haptics.ts';
 
 export type GridRange = 'month' | 'week' | '3day';
 
@@ -233,6 +239,7 @@ function attachDragging(root: HTMLElement, opts: DragOptions): () => void {
     if (moved) origin.addClass('tc-click-suppressed');
 
     if (commit && lastTargetDate && lastTargetDate !== fromDate) {
+      pulse(HAPTIC_DROP_MS);
       opts.onDrop(taskId, fromDate, lastTargetDate);
     }
   };
@@ -274,7 +281,12 @@ function attachDragging(root: HTMLElement, opts: DragOptions): () => void {
     if (cell?.dataset.date && cell.dataset.date !== active.fromDate) {
       cell.addClass('tc-drop-target');
     }
-    active.lastTargetDate = cell?.dataset.date ?? null;
+    const targetDate = cell?.dataset.date ?? null;
+    // One tick per newly highlighted cell, not a continuous buzz.
+    if (targetDate !== null && targetDate !== active.lastTargetDate) {
+      pulse(HAPTIC_TARGET_CHANGE_MS);
+    }
+    active.lastTargetDate = targetDate;
   };
 
   const startDrag = (eventEl: HTMLElement, evt: PointerEvent) => {
@@ -297,6 +309,7 @@ function attachDragging(root: HTMLElement, opts: DragOptions): () => void {
       moved: false,
     };
     opts.onDragStart();
+    pulse(HAPTIC_DRAG_START_MS);
     onPointerMove(evt);
   };
 
@@ -324,16 +337,23 @@ function attachDragging(root: HTMLElement, opts: DragOptions): () => void {
     teardown(active !== null);
   };
 
+  // The browser can revoke the gesture at any moment (scroll steal, incoming
+  // call, notification shade). Cancel means abort: never commit a drop the
+  // user did not finish.
+  const onPointerCancel = () => {
+    teardown(false);
+  };
+
   root.addEventListener('pointerdown', onPointerDown);
   document.addEventListener('pointermove', onPointerMove, { passive: false });
   document.addEventListener('pointerup', onPointerUp);
-  document.addEventListener('pointercancel', onPointerUp);
+  document.addEventListener('pointercancel', onPointerCancel);
 
   return () => {
     teardown(false);
     root.removeEventListener('pointerdown', onPointerDown);
     document.removeEventListener('pointermove', onPointerMove);
     document.removeEventListener('pointerup', onPointerUp);
-    document.removeEventListener('pointercancel', onPointerUp);
+    document.removeEventListener('pointercancel', onPointerCancel);
   };
 }

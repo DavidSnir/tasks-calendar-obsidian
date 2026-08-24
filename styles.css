@@ -295,8 +295,13 @@ body {
   overflow-wrap: break-word;
   cursor: pointer;
   user-select: none;
+  -webkit-user-select: none;
+  /* Pills are pure drag surfaces (ADR 0002): a pan gesture here makes the
+     browser fire pointercancel mid-drag. Scroll from empty space instead,
+     exactly like the previous FullCalendar build. */
+  touch-action: none;
+  -webkit-touch-callout: none; /* No iOS loupe/copy menu on long-press. */
   color: var(--tasks-calendar-event-text-main);
-  touch-action: pan-y; /* Vertical swipes scroll; drags start after long-press. */
 }
 
 .task-description {
