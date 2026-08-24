@@ -217,6 +217,11 @@ function attachDragging(root: HTMLElement, opts: DragOptions): () => void {
   } | null = null;
   let pressTimer: number | null = null;
   let startPoint: { x: number; y: number } | null = null;
+  /** Mouse press awaiting movement; a release without it stays a click. */
+  let pendingMouseDragEl: HTMLElement | null = null;
+
+  /** Movement (px) before a press becomes a drag. */
+  const DRAG_START_THRESHOLD_PX = 4;
 
   const clearCells = () => {
     root.querySelectorAll('.tc-drop-target').forEach((el) => el.removeClass('tc-drop-target'));
@@ -258,6 +263,20 @@ function attachDragging(root: HTMLElement, opts: DragOptions): () => void {
 
   const onPointerMove = (evt: PointerEvent) => {
     if (!active) {
+      // A pressed mouse becomes a drag only once it actually moves; without
+      // this, plain clicks would pop the pill out of its cell.
+      if (
+        pendingMouseDragEl &&
+        startPoint &&
+        Math.hypot(evt.clientX - startPoint.x, evt.clientY - startPoint.y) >
+          DRAG_START_THRESHOLD_PX
+      ) {
+        const el = pendingMouseDragEl;
+        pendingMouseDragEl = null;
+        startDrag(el, evt);
+        return;
+      }
+
       // Finger moved before the long-press fired: let scrolling happen.
       if (
         pressTimer !== null &&
@@ -273,7 +292,7 @@ function attachDragging(root: HTMLElement, opts: DragOptions): () => void {
     if (
       !active.moved &&
       startPoint &&
-      Math.hypot(evt.clientX - startPoint.x, evt.clientY - startPoint.y) > 4
+      Math.hypot(evt.clientX - startPoint.x, evt.clientY - startPoint.y) > DRAG_START_THRESHOLD_PX
     ) {
       active.moved = true;
     }
@@ -331,7 +350,8 @@ function attachDragging(root: HTMLElement, opts: DragOptions): () => void {
     startPoint = { x: evt.clientX, y: evt.clientY };
 
     if (evt.pointerType === 'mouse') {
-      startDrag(eventEl, evt);
+      // Defer until movement (see onPointerMove): pressing alone is not a drag.
+      pendingMouseDragEl = eventEl;
       return;
     }
 
@@ -343,6 +363,7 @@ function attachDragging(root: HTMLElement, opts: DragOptions): () => void {
   };
 
   const onPointerUp = () => {
+    pendingMouseDragEl = null;
     // A tap (no drag started) must simply clear the pending long-press.
     teardown(active !== null);
   };
@@ -351,6 +372,7 @@ function attachDragging(root: HTMLElement, opts: DragOptions): () => void {
   // call, notification shade). Cancel means abort: never commit a drop the
   // user did not finish.
   const onPointerCancel = () => {
+    pendingMouseDragEl = null;
     teardown(false);
   };
 
