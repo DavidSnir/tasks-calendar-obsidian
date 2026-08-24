@@ -11,6 +11,8 @@
     "importHelpers": true,
     "isolatedModules": true,
     "strictNullChecks": true,
+    // Node runs the tests straight from .ts sources and needs the extension.
+    "allowImportingTsExtensions": true,
     "lib": [
       "DOM",
       "ES5",

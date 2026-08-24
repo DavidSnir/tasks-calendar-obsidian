@@ -53,9 +53,9 @@ section: Task Status Styles
 
 setting: tasks-calendar-event-text-main
   name: Default Event Text Color
-  description: Default text color for tasks (applied to all unless overridden by completed style).
+  description: Default text color for tasks (applied to all unless overridden by completed style). Follows the active theme by default. Note that a color set here applies to both light and dark mode.
   type: variable-color
-  default: "#404040"
+  default: var(--text-normal)
   format: hex
 
 setting: tasks-calendar-incomplete-bg
@@ -92,8 +92,8 @@ setting: tasks-calendar-completed-border
   format: hex
 
 setting: tasks-calendar-completed-opacity
-  name: Completed Task Opacity
-  description: Opacity for completed task events (0 to 1).
+  name: Completed Task Fade
+  description: How faded the text of a completed task appears (0 to 1). The background and border stay solid.
   type: variable-number-slider
   default: 0.7
   min: 0.1
@@ -112,16 +112,29 @@ setting: tasks-calendar-completed-text-decoration
 
 */
 
-/* Root variables for Style Settings */
-:root {
+/*
+ * Variables for Style Settings.
+ *
+ * Scoped to `body`, not `:root`. Obsidian declares its own theme variables
+ * (--text-normal, --font-ui-small, --background-secondary-alt, ...) on <body>,
+ * so a variable declared on :root that references one of them resolves against
+ * <html>, where those names do not exist. That makes the whole custom property
+ * guaranteed-invalid, and the invalid value inherits down the entire tree --
+ * every var() reading it silently falls back to the property's initial value.
+ * Declaring here puts us on the same element as the names we reference.
+ *
+ * Specificity still leaves Style Settings (body.css-settings-manager) and the
+ * .theme-dark block below free to override these.
+ */
+body {
   /* General */
   --tasks-calendar-font-size: var(--font-ui-small);
   --tasks-calendar-event-padding: 5px;
   --tasks-calendar-event-margin: 3px;
   --tasks-calendar-day-cell-padding: 10px;
   --tasks-calendar-today-bg: var(--background-secondary-alt);
-  --tasks-calendar-event-text-main: #404040; /* Default Dark Gray */
-  
+  --tasks-calendar-event-text-main: var(--text-normal); /* Follows the active theme */
+
   /* Incomplete Tasks */
   --tasks-calendar-incomplete-bg: #dae5f0;
   --tasks-calendar-incomplete-border: #8ab4f8; /* A more visible blue for outline */
@@ -135,6 +148,31 @@ setting: tasks-calendar-completed-text-decoration
   --tasks-calendar-completed-border: #C8E6C9; /* Darker shade */
   --tasks-calendar-completed-opacity: 0.7;
   --tasks-calendar-completed-text-decoration: line-through;
+}
+
+/*
+ * Dark mode palette.
+ *
+ * The pastel backgrounds above are fixed light colors, so in dark mode they
+ * turn into bright islands and (for incomplete tasks) put light text on a light
+ * background. Each hue is carried over from the light palette but mixed against
+ * --background-primary, so the pills sit correctly on whatever background the
+ * active dark theme actually uses rather than assuming Obsidian's stock one.
+ *
+ * Deliberately `.theme-dark` and not `body.theme-dark`: Obsidian puts the class
+ * on <body>, and Style Settings injects user overrides as
+ * `body.css-settings-manager { ... }`. The lower specificity here means a user's
+ * customized colors still win.
+ */
+.theme-dark {
+  --tasks-calendar-incomplete-bg:     color-mix(in srgb, #8ab4f8 18%, var(--background-primary));
+  --tasks-calendar-incomplete-border: color-mix(in srgb, #8ab4f8 45%, var(--background-primary));
+
+  --tasks-calendar-inprogress-bg:     color-mix(in srgb, #E6E6AA 16%, var(--background-primary));
+  --tasks-calendar-inprogress-border: color-mix(in srgb, #E6E6AA 42%, var(--background-primary));
+
+  --tasks-calendar-completed-bg:      color-mix(in srgb, #C8E6C9 14%, var(--background-primary));
+  --tasks-calendar-completed-border:  color-mix(in srgb, #C8E6C9 40%, var(--background-primary));
 }
 
 /***********************/
@@ -155,6 +193,17 @@ setting: tasks-calendar-completed-text-decoration
 
 /* Main container layout */
 .tasks-calendar-container {
+    /* Map FullCalendar's own theming variables onto Obsidian's. Without this,
+       FullCalendar falls back to its light-mode defaults (#ddd gridlines on a
+       #fff page) and the grid glows white in a dark vault. */
+    --fc-border-color: var(--background-modifier-border);
+    --fc-page-bg-color: var(--background-primary);
+    --fc-neutral-bg-color: var(--background-secondary);
+    --fc-neutral-text-color: var(--text-muted);
+    --fc-today-bg-color: transparent; /* we paint today ourselves, see --tasks-calendar-today-bg */
+    --fc-event-text-color: var(--text-normal);
+    --fc-highlight-color: var(--text-selection);
+
     display: flex;
     flex-direction: column;
     height: 100%; /* Fill the available vertical space */
@@ -206,8 +255,6 @@ setting: tasks-calendar-completed-text-decoration
 .tasks-calendar-container .fc,
 .tasks-calendar-container .fc .fc-col-header-cell-cushion, /* Day headers (Mon, Tue) */
 .tasks-calendar-container .fc .fc-daygrid-day-number, /* Day numbers */
-.tasks-calendar-container .fc .fc-list-day-text,       /* List view day text */
-.tasks-calendar-container .fc .fc-list-day-side-text,  /* List view day side text */
 .tasks-calendar-container .fc-toolbar-title /* Toolbar title */
 {
   color: var(--text-normal);
@@ -219,8 +266,7 @@ setting: tasks-calendar-completed-text-decoration
 }
 
 /* Event styling - Base layout for ALL events */
-.tasks-calendar-container .fc-daygrid-event,
-.tasks-calendar-container .fc-list-event {
+.tasks-calendar-container .fc-daygrid-event {
   border-radius: var(--radius-s);
   padding: 0; /* Padding is applied to inner element */
   margin-bottom: var(--tasks-calendar-event-margin);
@@ -228,11 +274,9 @@ setting: tasks-calendar-completed-text-decoration
 }
 
 /* Event styling - Apply base styles */
-/* Increase specificity by adding .fc-daygrid-event / .fc-list-event */
+/* Increase specificity by adding .fc-daygrid-event */
 .tasks-calendar-container .fc-daygrid-event.task-incomplete,
-.tasks-calendar-container .fc-list-event.task-incomplete,
-.tasks-calendar-container .fc-daygrid-event:not(.task-inprogress):not(.task-completed), /* Catch default state */
-.tasks-calendar-container .fc-list-event:not(.task-inprogress):not(.task-completed) /* Catch default state */
+.tasks-calendar-container .fc-daygrid-event:not(.task-inprogress):not(.task-completed) /* Catch default state */
 {
   background-color: var(--tasks-calendar-incomplete-bg);
   border-color: var(--tasks-calendar-incomplete-border);
@@ -241,8 +285,7 @@ setting: tasks-calendar-completed-text-decoration
 
 /* Inner content base styles */
 /* Increase specificity */
-.tasks-calendar-container .fc-daygrid-event .fc-event-main,
-.tasks-calendar-container .fc-list-event .fc-event-main
+.tasks-calendar-container .fc-daygrid-event .fc-event-main
 {
   font-size: var(--tasks-calendar-font-size);
   padding: var(--tasks-calendar-event-padding); /* Keep original general padding */
@@ -258,8 +301,7 @@ setting: tasks-calendar-completed-text-decoration
 }
 
 /* Conditional RTL Styling */
-.tasks-calendar-container.tasks-calendar-rtl-enabled .fc-daygrid-event .fc-event-main,
-.tasks-calendar-container.tasks-calendar-rtl-enabled .fc-list-event .fc-event-main {
+.tasks-calendar-container.tasks-calendar-rtl-enabled .fc-daygrid-event .fc-event-main {
   /* RTL Support */
   direction: rtl;
   unicode-bidi: embed;
@@ -268,13 +310,10 @@ setting: tasks-calendar-completed-text-decoration
 
 /* === Status Specific Styling === */
 
-/* Set text color for incomplete tasks to ensure readability with transparent background */
-.tasks-calendar-container .fc-daygrid-event.task-incomplete .fc-event-main,
-.tasks-calendar-container .fc-list-event.task-incomplete .fc-event-main,
-.tasks-calendar-container .fc-daygrid-event:not(.task-inprogress):not(.task-completed) .fc-event-main,
-.tasks-calendar-container .fc-list-event:not(.task-inprogress):not(.task-completed) .fc-event-main {
-  color: var(--text-normal);
-}
+/* Incomplete tasks intentionally have no text-color rule of their own: they
+   inherit --tasks-calendar-event-text-main like every other status. Forcing
+   var(--text-normal) here used to put near-white text on the fixed pastel blue
+   background in dark mode. */
 
 /* Style the task description to be normal weight */
 .tasks-calendar-event .task-description {
@@ -290,37 +329,38 @@ setting: tasks-calendar-completed-text-decoration
 
 /* Incomplete Tasks (Default) */
 .tasks-calendar-container .fc-daygrid-event.task-incomplete,
-.tasks-calendar-container .fc-list-event.task-incomplete,
-.tasks-calendar-container .fc-daygrid-event:not(.task-inprogress):not(.task-completed),
-.tasks-calendar-container .fc-list-event:not(.task-inprogress):not(.task-completed) {
+.tasks-calendar-container .fc-daygrid-event:not(.task-inprogress):not(.task-completed) {
   background-color: var(--tasks-calendar-incomplete-bg);
   border-color: var(--tasks-calendar-incomplete-border);
 }
 
 /* In-Progress Tasks */
-.tasks-calendar-container .fc-daygrid-event.task-inprogress,
-.tasks-calendar-container .fc-list-event.task-inprogress {
+.tasks-calendar-container .fc-daygrid-event.task-inprogress {
   background-color: var(--tasks-calendar-inprogress-bg);
   border-color: var(--tasks-calendar-inprogress-border);
   opacity: 1;
 }
 
-.tasks-calendar-container .fc-daygrid-event.task-inprogress .fc-event-main,
-.tasks-calendar-container .fc-list-event.task-inprogress .fc-event-main {
+.tasks-calendar-container .fc-daygrid-event.task-inprogress .fc-event-main {
   text-decoration: none;
 }
 
 /* Completed Tasks */
-.tasks-calendar-container .fc-daygrid-event.task-completed,
-.tasks-calendar-container .fc-list-event.task-completed {
+.tasks-calendar-container .fc-daygrid-event.task-completed {
   background-color: var(--tasks-calendar-completed-bg);
   border-color: var(--tasks-calendar-completed-border);
-  opacity: var(--tasks-calendar-completed-opacity);
 }
 
-.tasks-calendar-container .fc-daygrid-event.task-completed .fc-event-main,
-.tasks-calendar-container .fc-list-event.task-completed .fc-event-main {
+/* The fade applies to the text only. Applying it to the whole event dimmed the
+   text on top of the strikethrough, which is what made completed tasks hard to
+   read; the border and background now stay solid. */
+.tasks-calendar-container .fc-daygrid-event.task-completed .fc-event-main {
   text-decoration: var(--tasks-calendar-completed-text-decoration);
+  color: color-mix(
+    in srgb,
+    var(--tasks-calendar-event-text-main) calc(var(--tasks-calendar-completed-opacity) * 100%),
+    transparent
+  );
 }
 
 /***************************/
@@ -342,12 +382,12 @@ setting: tasks-calendar-completed-text-decoration
   z-index: 9999 !important;
   pointer-events: none !important;
   opacity: 0.8 !important;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3) !important;
+  box-shadow: var(--shadow-s) !important;
 }
 
 /* Improve drag feedback */
 .tasks-calendar-container .fc-event-selected {
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3) !important;
+  box-shadow: var(--shadow-s) !important;
 }
 
 /*************************/
@@ -471,8 +511,7 @@ setting: tasks-calendar-completed-text-decoration
     min-height: 20px;
   }
   
-  .tasks-calendar-container .fc-daygrid-event .fc-event-main,
-  .tasks-calendar-container .fc-list-event .fc-event-main {
+  .tasks-calendar-container .fc-daygrid-event .fc-event-main {
     padding: 1px 4px;
     font-size: calc(var(--tasks-calendar-font-size) - 1px);
   }
@@ -480,7 +519,6 @@ setting: tasks-calendar-completed-text-decoration
 
 /* Accessibility */
 .tasks-calendar-container .fc-daygrid-event:focus,
-.tasks-calendar-container .fc-list-event:focus,
 .tasks-calendar-container .fc .fc-button:focus {
   outline: 2px solid var(--color-accent);
   outline-offset: 2px;
@@ -488,8 +526,7 @@ setting: tasks-calendar-completed-text-decoration
 
 /* High contrast mode support */
 @media (prefers-contrast: high) {
-  .tasks-calendar-container .fc-daygrid-event,
-  .tasks-calendar-container .fc-list-event {
+  .tasks-calendar-container .fc-daygrid-event {
     border-width: 2px;
   }
   
@@ -574,8 +611,7 @@ setting: tasks-calendar-completed-text-decoration
     padding: 6px 10px;
     font-size: var(--font-ui-small);
   }
-  .tasks-calendar-container .fc-daygrid-event .fc-event-main,
-  .tasks-calendar-container .fc-list-event .fc-event-main {
+  .tasks-calendar-container .fc-daygrid-event .fc-event-main {
     font-size: 11px; /* Even smaller on mobile */
   }
 }
@@ -585,8 +621,7 @@ setting: tasks-calendar-completed-text-decoration
 /***********************/
 
 /* Focus styles for events */
-.tasks-calendar-container .fc-daygrid-event:focus,
-.tasks-calendar-container .fc-list-event:focus {
+.tasks-calendar-container .fc-daygrid-event:focus {
   outline: 2px solid var(--interactive-accent);
 }
 
@@ -598,7 +633,7 @@ setting: tasks-calendar-completed-text-decoration
   box-shadow: none !important;
   padding: 0 !important;
   margin: 8px 4px 4px 4px !important;
-  cursor: default;
+  cursor: pointer; /* Clicking the header opens the note */
 }
 
 .tasks-calendar-container .fc-daygrid-event.task-file-header .fc-event-main {
@@ -611,7 +646,7 @@ setting: tasks-calendar-completed-text-decoration
   opacity: 1 !important;
   padding: 2px 0 !important;
   box-shadow: none !important;
-  cursor: default !important;
+  cursor: pointer !important;
 }
 
 /* RTL support for file headers */
@@ -625,14 +660,15 @@ setting: tasks-calendar-completed-text-decoration
   text-align: start !important;
 }
 
-.tasks-calendar-container .fc-daygrid-event.task-file-header:hover,
+/* Headers open their note on click, so give them a link-like affordance.
+   The !important flags are needed to beat the base header rules above, which
+   force a transparent background and --text-normal with !important. */
 .tasks-calendar-container .fc-daygrid-event.task-file-header:hover .fc-event-main,
-.tasks-calendar-container .fc-daygrid-event.task-file-header:focus,
 .tasks-calendar-container .fc-daygrid-event.task-file-header:focus .fc-event-main {
-  background-color: var(--background-secondary);
-  border-color: var(--background-modifier-border);
-  box-shadow: none;
-  cursor: default;
+  color: var(--text-accent) !important;
+  text-decoration: underline !important;
+  text-underline-offset: 2px;
+  cursor: pointer !important;
 }
 
 /* Task count indicator in file headers */
@@ -642,13 +678,11 @@ setting: tasks-calendar-completed-text-decoration
   font-weight: normal;
 }
 
-/* Make file headers non-draggable */
-.tasks-calendar-container .fc-daygrid-event.task-file-header {
-  cursor: default !important;
-}
-
+/* Headers are not draggable (handleEventDrop reverts them), but they are
+   clickable, so the cursor stays a pointer rather than reverting to default. */
+.tasks-calendar-container .fc-daygrid-event.task-file-header,
 .tasks-calendar-container .fc-daygrid-event.task-file-header .fc-event-main {
-  cursor: default !important;
+  cursor: pointer !important;
 }
 
 /* Ensure regular tasks have proper indentation relative to file headers */

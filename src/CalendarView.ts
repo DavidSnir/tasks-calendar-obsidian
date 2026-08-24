@@ -1,12 +1,20 @@
-import { ItemView, WorkspaceLeaf, TFile, Notice, setIcon } from "obsidian";
+import { ItemView, WorkspaceLeaf, TFile, Notice, setIcon, Keymap } from "obsidian";
 import { Calendar, EventDropArg, EventClickArg } from '@fullcalendar/core';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import interactionPlugin from '@fullcalendar/interaction'; // For drag/drop later
 import TasksCalendarPlugin from "../main"; // Import the main plugin class to access settings
+import {
+  hasRecurrenceMarker,
+  nextOccurrence,
+  occurrenceAlreadyExists,
+  parseRecurrence,
+  setCompletionDate,
+  stampDate,
+  eventDateFor,
+  type TaskStatus,
+} from "./taskLines";
 
 export const CALENDAR_VIEW_TYPE = "tasks-calendar-view";
-
-type TaskStatus = 'incomplete' | 'inprogress' | 'completed';
 
 export class CalendarView extends ItemView {
   private calendar: Calendar | null = null;
@@ -88,9 +96,11 @@ export class CalendarView extends ItemView {
       snapDuration: '1 day', // Snap to day boundaries
       dragRevertDuration: 200, // Faster revert animation
       events: taskEvents, // Set initial events
-      eventClick: (info) => { 
-        // Only handle clicks on actual tasks, not file headers
-        if (!info.event.extendedProps.isFileHeader) {
+      eventClick: (info) => {
+        // File headers open the note; tasks cycle their status.
+        if (info.event.extendedProps.isFileHeader) {
+          this.openHeaderFile(info);
+        } else {
           this.handleEventClick(info);
         }
       },
@@ -350,36 +360,9 @@ export class CalendarView extends ItemView {
               sortOrder = 12; // Incomplete second within file group
             }
 
-            // Determine Event Date based on priority
-            let eventDate: string | null = null;
-            let description = lineContent;
-
-            // 1. Check for completion date (only if task is completed)
-            if (status === 'completed') {
-              const completionMatch = lineContent.match(completionDateRegex);
-              if (completionMatch) {
-                eventDate = completionMatch[1];
-                // console.log(`Using completion date ${eventDate} for task in ${file.path} (Line: ${i+1})`);
-              }
-            }
-
-            // 2. Check for due date (if eventDate not set)
-            if (eventDate === null) {
-              const dueMatch = lineContent.match(dueDateRegex);
-              if (dueMatch) {
-                eventDate = dueMatch[1];
-                // console.log(`Using due date ${eventDate} for task in ${file.path} (Line: ${i+1})`);
-              }
-            }
-
-            // 3. Check for scheduled date (if eventDate still not set)
-            if (eventDate === null) {
-              const scheduledMatch = lineContent.match(scheduledDateRegex);
-              if (scheduledMatch) {
-                eventDate = scheduledMatch[1];
-                // console.log(`Using scheduled date ${eventDate} for task in ${file.path} (Line: ${i+1})`);
-              }
-            }
+            // Determine Event Date based on priority (see eventDateFor:
+            // handleEventDrop mirrors this order and must stay in step).
+            const eventDate = eventDateFor(status, lineContent);
 
             // Clean up description by removing all date and recurring patterns
             const cleanedDescription = recurringPatterns.reduce((acc, pattern) => acc.replace(pattern, ''), lineContent).trim();
@@ -412,13 +395,15 @@ export class CalendarView extends ItemView {
       }
     }
 
-    // Group tasks by file and date to create file headers
+    // Group tasks by file and date to create file headers.
+    // Keyed by full path, not basename: two files can share a basename, and a
+    // header has to point at exactly one file now that it is clickable.
     const tasksByFileAndDate = new Map<string, Map<string, any[]>>();
-    
+
     for (const task of allTasks) {
       if (!task.start) continue; // Skip tasks without dates
-      
-      const fileKey = task.extendedProps.fileName;
+
+      const fileKey = task.extendedProps.filePath;
       const dateKey = task.start;
       
       if (!tasksByFileAndDate.has(fileKey)) {
@@ -435,19 +420,21 @@ export class CalendarView extends ItemView {
 
     // Create file header events for each file/date combination and update task sortOrder
     let fileIndex = 0;
-    for (const [fileName, dateMap] of tasksByFileAndDate) {
+    for (const [filePath, dateMap] of tasksByFileAndDate) {
       const baseSort = fileIndex * 1000; // Give each file a distinct range
-      
+
       for (const [date, tasks] of dateMap) {
+        const fileName = tasks[0].extendedProps.fileName; // Basename, for display
         // Create header event with file-specific sortOrder
         const headerEvent = {
-          id: `header-${fileName}-${date}`,
+          id: `header-${filePath}-${date}`,
           title: fileName,
           start: date,
           allDay: true,
           classNames: ['task-file-header'],
           extendedProps: {
             fileName: fileName,
+            filePath: filePath, // Used to open the note when the header is clicked
             isFileHeader: true,
             isTask: false,
             sortOrder: baseSort + 100, // Header comes first for this file
@@ -565,8 +552,16 @@ export class CalendarView extends ItemView {
             let updatedLine = originalLine;
             let dateUpdated = false;
 
+            // Completed tasks are placed on the calendar by their completion
+            // date, so that is the date a drag has to move. Updating the due
+            // date instead would leave the event where it started.
+            if (event.extendedProps.status === 'completed' && completionDateRegex.test(originalLine)) {
+                updatedLine = originalLine.replace(completionDateRegex, `$1${newDateStr}`);
+                dateUpdated = true;
+                console.log("Updated completion date");
+            }
             // Try to update due date first
-            if (dueDateRegex.test(originalLine)) {
+            else if (dueDateRegex.test(originalLine)) {
                 updatedLine = originalLine.replace(dueDateRegex, `$1${newDateStr}`);
                 dateUpdated = true;
                 console.log("Updated due date");
@@ -610,7 +605,24 @@ export class CalendarView extends ItemView {
     }
   }
 
-  // --- Handle Task Toggling --- 
+  // --- Open the note behind a file header ---
+  async openHeaderFile(info: EventClickArg) {
+    const filePath = info.event.extendedProps.filePath;
+    if (!filePath) return;
+
+    const file = this.app.vault.getAbstractFileByPath(filePath);
+    if (!(file instanceof TFile)) {
+      new Notice(`Could not find ${filePath}`);
+      return;
+    }
+
+    // Keymap.isModEvent honours the usual Obsidian modifiers, so cmd/ctrl-click
+    // and middle-click open in a new tab exactly as they do elsewhere.
+    const newLeaf = Keymap.isModEvent(info.jsEvent);
+    await this.app.workspace.getLeaf(newLeaf).openFile(file);
+  }
+
+  // --- Handle Task Toggling ---
   async handleEventClick(info: EventClickArg) {
     const event = info.event;
     const currentStatus: TaskStatus = event.extendedProps.status || 'incomplete'; 
@@ -671,6 +683,9 @@ export class CalendarView extends ItemView {
         return;
     }
 
+    let recurred = false;
+    let unsupportedRule = false;
+
     try {
         await this.app.vault.process(file, (data) => {
             const lines = data.split('\n');
@@ -686,7 +701,11 @@ export class CalendarView extends ItemView {
                 throw new Error("Checkbox pattern not found in line.");
             }
             
-            const updatedLine = originalLine.replace(checkboxRegex, `$1${nextStatusChar}$2`);
+            let updatedLine = originalLine.replace(checkboxRegex, `$1${nextStatusChar}$2`);
+
+            // Completing stamps the line with a completion date; moving back to
+            // in-progress or incomplete removes it again.
+            updatedLine = setCompletionDate(updatedLine, nextStatus === 'completed', stampDate(new Date()));
 
             // We still check this, but failure doesn't stop the optimistic UI update
             if (originalLine === updatedLine) {
@@ -696,11 +715,42 @@ export class CalendarView extends ItemView {
             }
 
             lines[lineNumber] = updatedLine;
+
+            // A recurring task spawns its next instance directly above the one
+            // just completed, the way the Tasks plugin does.
+            if (nextStatus === 'completed') {
+                const rule = parseRecurrence(updatedLine);
+                if (rule) {
+                    const next = nextOccurrence(updatedLine, rule, stampDate(new Date()));
+                    // Reopening a completed task and completing it again would
+                    // otherwise write a second copy of the same future task.
+                    if (occurrenceAlreadyExists(lines[lineNumber - 1], next)) {
+                        console.log("Next occurrence already present, not adding another");
+                    } else {
+                        lines.splice(lineNumber, 0, next);
+                        recurred = true;
+                    }
+                } else if (hasRecurrenceMarker(updatedLine)) {
+                    unsupportedRule = true;
+                }
+            }
+
             return lines.join('\n');
         });
 
-        new Notice(`Task status set to ${nextStatus} in ${file.basename}`);
-        // No refetch needed for optimistic update
+        if (recurred) {
+            new Notice(`Task completed, next occurrence scheduled in ${file.basename}`);
+        } else if (unsupportedRule) {
+            new Notice("Unsupported recurrence rule, no next occurrence was created");
+        } else {
+            new Notice(`Task status set to ${nextStatus} in ${file.basename}`);
+        }
+
+        // The optimistic update above only restyles the event. Adding or
+        // removing a completion date changes which date the task is placed on,
+        // and a new occurrence shifts the line numbers that event ids encode,
+        // so the calendar has to be rebuilt either way.
+        this.refreshCalendarData();
 
     } catch (error) {
         console.error(`Failed to toggle task status in file ${filePath}:`, error);
