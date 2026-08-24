@@ -8,7 +8,7 @@ import {
 import { addDays, parseDate } from "./dateGrid";
 import { stampDate, type TaskStatus } from "./taskLines";
 import { buildCells, parseFileTasks, type CalendarTask } from "./taskQuery";
-import { applyStatusToggle, rescheduleLine } from "./taskMutations";
+import { applyStatusToggle, rescheduleLine, type RecurrenceOutcome } from "./taskMutations";
 
 export const CALENDAR_VIEW_TYPE = "tasks-calendar-view";
 
@@ -32,6 +32,8 @@ export class CalendarView extends ItemView {
   private range: GridRange = 'month';
   private anchor: string = stampDate(new Date());
   private tasksById: Map<string, CalendarTask> = new Map();
+  /** Guards against overlapping writes while a rescan is still pending. */
+  private syncInProgress = false;
 
   constructor(leaf: WorkspaceLeaf, plugin: TasksCalendarPlugin) {
     super(leaf);
@@ -115,15 +117,18 @@ export class CalendarView extends ItemView {
 
   private async handleTaskClick(taskId: string): Promise<void> {
     const task = this.tasksById.get(taskId);
-    if (!task) return;
+    if (!task || this.syncInProgress) return;
+    this.syncInProgress = true;
 
     const nextStatus = NEXT_STATUS[task.status];
+    // Optimistic restyle while the file write is in flight.
     const eventEls = this.findEventEls(taskId);
     this.restyleEvents(eventEls, nextStatus);
 
     try {
       const file = this.requireFile(task.filePath);
-      let recurrence;
+      let changed = false;
+      let recurrence: RecurrenceOutcome | undefined;
       await this.app.vault.process(file, (data) => {
         const toggle = applyStatusToggle(
           data.split('\n'),
@@ -131,22 +136,28 @@ export class CalendarView extends ItemView {
           nextStatus,
           stampDate(new Date()),
         );
+        changed = toggle.changed;
         recurrence = toggle.recurrence;
         return toggle.lines.join('\n');
       });
 
-      if (recurrence === 'created') {
-        new Notice(`Task completed, next occurrence scheduled in ${file.basename}`);
-      } else if (recurrence === 'unsupported') {
-        new Notice('Unsupported recurrence rule, no next occurrence was created');
-      } else {
-        new Notice(`Task status set to ${nextStatus} in ${file.basename}`);
+      if (changed) {
+        if (recurrence === 'created') {
+          new Notice(`Task completed, next occurrence scheduled in ${file.basename}`);
+        } else if (recurrence === 'unsupported') {
+          new Notice('Unsupported recurrence rule, no next occurrence was created');
+        } else {
+          new Notice(`Task status set to ${nextStatus} in ${file.basename}`);
+        }
       }
       await this.refreshCalendarData();
     } catch (error) {
       console.error('Tasks Calendar: failed to toggle task', error);
       new Notice(`Error toggling task status: ${(error as Error).message}`);
-      this.restyleEvents(eventEls, task.status); // Revert the optimistic restyle.
+      // The optimistic restyle may be a lie now; repaint from disk truth.
+      await this.refreshCalendarData();
+    } finally {
+      this.syncInProgress = false;
     }
   }
 
@@ -169,7 +180,9 @@ export class CalendarView extends ItemView {
 
   private async handleTaskDrop(taskId: string, toDate: string): Promise<void> {
     const task = this.tasksById.get(taskId);
-    if (!task) return;
+    // A drop during a pending toggle would reschedule a stale line number.
+    if (!task || this.syncInProgress) return;
+    this.syncInProgress = true;
 
     try {
       const file = this.requireFile(task.filePath);
@@ -185,6 +198,7 @@ export class CalendarView extends ItemView {
     }
     // Re-render from disk so headers, counts and placement stay truthful.
     await this.refreshCalendarData();
+    this.syncInProgress = false;
   }
 
   private requireFile(filePath: string): TFile {

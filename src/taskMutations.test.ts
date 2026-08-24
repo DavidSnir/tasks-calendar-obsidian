@@ -59,6 +59,21 @@ describe('applyStatusToggle', () => {
     assert.equal(out.lines.length, 1);
   });
 
+  test('tolerates a repeat click on an already-applied state', () => {
+    // Second click racing the refresh: the file already holds [/].
+    const out = applyStatusToggle(['- [/] Started 📅 2026-08-26'], 0, 'inprogress', TODAY);
+    assert.equal(out.changed, false);
+    assert.deepEqual(out.lines, ['- [/] Started 📅 2026-08-26']);
+  });
+
+  test('re-completing an already stamped task neither duplicates nor spawns', () => {
+    const line = `- [x] Done deal 📅 2026-08-26 ✅ ${TODAY}`;
+    const out = applyStatusToggle([line], 0, 'completed', TODAY);
+    assert.equal(out.changed, false);
+    assert.equal(out.recurrence, undefined);
+    assert.deepEqual(out.lines, [line]);
+  });
+
   test('throws on a line that is no longer a checkbox', () => {
     assert.throws(
       () => applyStatusToggle(['plain prose'], 0, 'completed', TODAY),

@@ -25,6 +25,8 @@ export type RecurrenceOutcome = 'created' | 'exists' | 'unsupported';
 export interface ToggleResult {
   /** A fresh array; the input array is never mutated. */
   lines: string[];
+  /** False when the file already held the requested state (repeat click). */
+  changed: boolean;
   recurrence?: RecurrenceOutcome;
 }
 
@@ -58,11 +60,13 @@ export function applyStatusToggle(
   let updatedLine = originalLine.replace(CHECKBOX, `$1${statusChar(nextStatus)}$2`);
   updatedLine = setCompletionDate(updatedLine, nextStatus === 'completed', today);
 
+  // A repeat click racing the refresh can ask for a state the file already
+  // holds. That is not corruption: treat it as a no-op.
   if (updatedLine === originalLine) {
-    throw new Error(`Failed to replace status char in line. Expected '${statusChar(nextStatus)}'.`);
+    return { lines: [...lines], changed: false };
   }
 
-  const result: ToggleResult = { lines: [...lines] };
+  const result: ToggleResult = { lines: [...lines], changed: true };
   result.lines[lineNumber] = updatedLine;
 
   if (nextStatus === 'completed') {
