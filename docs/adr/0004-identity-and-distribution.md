@@ -1,7 +1,7 @@
 # ADR 0004: Keep name and id; distribute via GitHub
 
 Date: 2026-08-24
-Status: Accepted
+Status: Accepted (amended 2026-08-24: beta phase ships as `tasks-calendar-beta`)
 
 ## Context
 
@@ -31,3 +31,10 @@ ADR updated.
   id; documented as unsupported.
 - Author fields carry "David Snir"; releases follow the standard Obsidian
   `versions.json` + GitHub-release workflow.
+
+### Amendment (beta phase)
+
+While the rewrite stabilizes, the plugin ships as **Tasks Calendar Beta**
+(id `tasks-calendar-beta`) so it can run side-by-side with the installed
+original instead of replacing it. The stable id reverts to `tasks-calendar`
+once the rewrite is proven in daily use.

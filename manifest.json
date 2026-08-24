@@ -1,6 +1,6 @@
 {
-	"id": "tasks-calendar",
-	"name": "Tasks Calendar",
+	"id": "tasks-calendar-beta",
+	"name": "Tasks Calendar Beta",
 	"version": "0.2.0",
 	"minAppVersion": "1.5.0",
 	"description": "Displays Obsidian Tasks in a calendar view with drag-and-drop support.",
