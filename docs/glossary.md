@@ -51,8 +51,10 @@ inserts or removes lines must rebuild the calendar.
 go stale the moment an edit inserts lines, exact text does not.
 
 **Optimistic edits** — UI-only overlays (`status`/`date` per task id) folded
-into every render so clicks and drops paint instantly. Cleared whenever a
-scan lands, because disk truth wins.
+into every render so clicks and drops paint instantly. Each scan *settles*
+them: an edit survives only while disk does not yet reflect it
+(`settleOptimisticEdits`), so the UI can never flash back to an older state
+mid-burst.
 
 **Write chain** — The promise queue serializing all note mutations. Note
 writes must never overlap; everything else may.

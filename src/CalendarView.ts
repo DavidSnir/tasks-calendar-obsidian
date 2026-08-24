@@ -11,6 +11,7 @@ import {
   applyOptimisticEdits,
   buildCells,
   parseFileTasks,
+  settleOptimisticEdits,
   type CalendarTask,
   type OptimisticEdit,
 } from "./taskQuery";
@@ -129,8 +130,9 @@ export class CalendarView extends ItemView {
     }
 
     this.lastTasks = allTasks;
-    // Disk truth wins over anything still optimistic once a scan lands.
-    this.optimisticEdits.clear();
+    // Disk truth settles whatever it can; edits whose writes are still in
+    // flight survive so the UI never flashes back to an older state.
+    this.optimisticEdits = settleOptimisticEdits(this.optimisticEdits, allTasks);
     this.renderFromModel();
   }
 
@@ -173,13 +175,16 @@ export class CalendarView extends ItemView {
 
     const nextStatus = NEXT_STATUS[effective.status];
     // Completing moves a task onto today (the stamp's placement rule);
-    // leaving completed hands placement back to due/scheduled.
-    const edit: OptimisticEdit = {
-      status: nextStatus,
-      date: nextStatus === 'completed' ? stampDate(new Date()) : null,
-    };
+    // leaving completed drops the date override so due/scheduled applies.
+    const prev = this.optimisticEdits.get(taskId) ?? {};
+    const edit: OptimisticEdit = { ...prev, status: nextStatus };
+    if (nextStatus === 'completed') {
+      edit.date = stampDate(new Date());
+    } else {
+      delete edit.date;
+    }
 
-    this.optimisticEdits.set(taskId, { ...this.optimisticEdits.get(taskId), ...edit });
+    this.optimisticEdits.set(taskId, edit);
     this.renderFromModel(); // Instant feedback; never waits on I/O.
 
     this.writeChain = this.writeChain.then(() =>

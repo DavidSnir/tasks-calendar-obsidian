@@ -97,8 +97,8 @@ const STATUS_RANK: Record<TaskStatus, number> = {
 /** A not-yet-written change the user made in the UI. */
 export interface OptimisticEdit {
   status?: TaskStatus;
-  /** An explicit null clears a task's date override (back to due/scheduled). */
-  date?: string | null;
+  /** A concrete placement date; absence falls back to due/scheduled. */
+  date?: string;
 }
 
 /**
@@ -119,6 +119,33 @@ export function applyOptimisticEdits(
       date: edit.date !== undefined ? edit.date : task.date,
     };
   });
+}
+
+/**
+ * Reconcile pending UI edits against a fresh scan (ADR 0005).
+ *
+ * An edit survives only if disk does not reflect it yet — its write may
+ * still be queued or in flight, and blindly clearing would snap the UI back
+ * to an older state until the next scan (visible as jitter under rapid
+ * clicking). Edits the scan confirms are dropped; edits whose task vanished
+ * are dropped too.
+ */
+export function settleOptimisticEdits(
+  edits: Map<string, OptimisticEdit>,
+  scanned: CalendarTask[],
+): Map<string, OptimisticEdit> {
+  const byId = new Map(scanned.map((task) => [task.id, task]));
+  const survivors = new Map<string, OptimisticEdit>();
+
+  for (const [id, edit] of edits) {
+    const disk = byId.get(id);
+    if (!disk) continue; // Task gone from the vault: nothing to hold onto.
+
+    const statusSettled = edit.status === undefined || edit.status === disk.status;
+    const dateSettled = edit.date === undefined || edit.date === disk.date;
+    if (!statusSettled || !dateSettled) survivors.set(id, edit);
+  }
+  return survivors;
 }
 
 /**

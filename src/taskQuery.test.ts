@@ -5,6 +5,7 @@ import {
   applyOptimisticEdits,
   buildCells,
   parseFileTasks,
+  settleOptimisticEdits,
   type CalendarTask,
   type OptimisticEdit,
   type TaskStatus,
@@ -49,12 +50,6 @@ describe('applyOptimisticEdits', () => {
     assert.equal(out[0].status, 'incomplete');
   });
 
-  test('clears a date override back to null with an explicit null edit', () => {
-    const edits = new Map<string, OptimisticEdit>([['f:0', { date: null }]]);
-    const out = applyOptimisticEdits([t('f', 'Open', '2026-08-24', 'incomplete')], edits);
-    assert.equal(out[0].date, null);
-  });
-
   test('leaves unedited tasks and the input array untouched', () => {
     const original = [t('f', 'Open', '2026-08-24', 'incomplete')];
     const edits = new Map<string, OptimisticEdit>([['other:0', { status: 'completed' }]]);
@@ -62,6 +57,56 @@ describe('applyOptimisticEdits', () => {
     assert.notEqual(out, original);
     assert.equal(original[0].status, 'incomplete');
     assert.equal(out[0], original[0]);
+  });
+});
+
+describe('settleOptimisticEdits', () => {
+  const t = (
+    id: string,
+    status: TaskStatus,
+    date: string | null,
+  ): CalendarTask => ({
+    id,
+    filePath: `${id}.md`,
+    fileName: id,
+    lineNumber: 0,
+    rawLine: '',
+    description: 'x',
+    status,
+    date,
+  });
+
+  test('drops an edit the scan confirms', () => {
+    const edits = new Map([['a', { status: 'completed' } as OptimisticEdit]]);
+    const scanned = [t('a', 'completed', '2026-08-24')];
+    assert.equal(settleOptimisticEdits(edits, scanned).size, 0);
+  });
+
+  test('keeps an edit the scan does not reflect yet (write still in flight)', () => {
+    const edits = new Map([['a', { status: 'inprogress' } as OptimisticEdit]]);
+    // Disk still shows the older state from before this click's write.
+    const scanned = [t('a', 'completed', null)];
+    const out = settleOptimisticEdits(edits, scanned);
+    assert.equal(out.get('a')?.status, 'inprogress');
+  });
+
+  test('judges date overrides separately from statuses', () => {
+    const edits = new Map([
+      ['a', { status: 'completed', date: '2026-08-24' } as OptimisticEdit],
+      ['b', { date: '2026-09-01' } as OptimisticEdit],
+    ]);
+    const scanned = [
+      t('a', 'completed', '2026-08-24'), // both settled
+      t('b', 'incomplete', '2026-08-24'), // date not written yet
+    ];
+    const out = settleOptimisticEdits(edits, scanned);
+    assert.equal(out.has('a'), false);
+    assert.equal(out.get('b')?.date, '2026-09-01');
+  });
+
+  test('drops edits whose task vanished from the vault', () => {
+    const edits = new Map([['gone', { status: 'completed' } as OptimisticEdit]]);
+    assert.equal(settleOptimisticEdits(edits, []).size, 0);
   });
 });
 
