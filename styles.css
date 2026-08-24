@@ -122,9 +122,6 @@ setting: tasks-calendar-completed-text-decoration
  * guaranteed-invalid, and the invalid value inherits down the entire tree --
  * every var() reading it silently falls back to the property's initial value.
  * Declaring here puts us on the same element as the names we reference.
- *
- * Specificity still leaves Style Settings (body.css-settings-manager) and the
- * .theme-dark block below free to override these.
  */
 body {
   /* General */
@@ -148,6 +145,10 @@ body {
   --tasks-calendar-completed-border: #C8E6C9; /* Darker shade */
   --tasks-calendar-completed-opacity: 0.7;
   --tasks-calendar-completed-text-decoration: line-through;
+
+  /* Grid chrome */
+  --tasks-calendar-weeknum-width: 2em;
+  --tasks-calendar-cell-min-height: 96px;
 }
 
 /*
@@ -175,186 +176,159 @@ body {
   --tasks-calendar-completed-border:  color-mix(in srgb, #C8E6C9 40%, var(--background-primary));
 }
 
-/***********************/
-/** Container & Layout **/
-/***********************/
+/***************************/
+/** Container & Layout   **/
+/***************************/
 
-/* Add padding to day cells for more breathing room */
-.tasks-calendar-container .fc .fc-daygrid-day-frame {
-    padding: 0; /* Reset frame padding */
-}
-
-/* Apply padding directly to the events container and background layer */
-.tasks-calendar-container .fc .fc-daygrid-day-events,
-.tasks-calendar-container .fc .fc-daygrid-day-bg {
-    padding: var(--tasks-calendar-day-cell-padding);
-    box-sizing: border-box;
-}
-
-/* Main container layout */
+/* The ONLY scroll container: everything inside sizes intrinsically, so no
+   JS resize machinery is needed anywhere in the plugin. */
 .tasks-calendar-container {
-    /* Map FullCalendar's own theming variables onto Obsidian's. Without this,
-       FullCalendar falls back to its light-mode defaults (#ddd gridlines on a
-       #fff page) and the grid glows white in a dark vault. */
-    --fc-border-color: var(--background-modifier-border);
-    --fc-page-bg-color: var(--background-primary);
-    --fc-neutral-bg-color: var(--background-secondary);
-    --fc-neutral-text-color: var(--text-muted);
-    --fc-today-bg-color: transparent; /* we paint today ourselves, see --tasks-calendar-today-bg */
-    --fc-event-text-color: var(--text-normal);
-    --fc-highlight-color: var(--text-selection);
-
-    display: flex;
-    flex-direction: column;
-    height: 100%; /* Fill the available vertical space */
-    width: 100%;
-    overflow-y: auto; /* This should be the ONLY scrollbar */
-    box-sizing: border-box; /* Include padding in height/width calculation */
-    min-height: 400px;
-    position: relative; /* Establish positioning context */
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+  overflow-y: auto;
+  box-sizing: border-box;
+  min-height: 400px;
+  position: relative;
 }
 
-/* Ensure FullCalendar's main element is a proper flex child */
-.tasks-calendar-container .fc {
-    flex: 1 1 auto; /* Allow the calendar to grow and shrink */
-    height: auto; /* Let flexbox manage the height */
-    min-height: 0; /* Critical for flex children to not overflow */
-    width: 100%; /* Ensure full width utilization */
-    max-width: 100%; /* Prevent overflow */
+.tasks-calendar-grid,
+.tasks-calendar-container .tc-grid {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
 }
 
-/* Ensure FullCalendar's view harness doesn't create its own scroll context */
-.tasks-calendar-container .fc-view-harness {
-    overflow: visible !important; /* Force parent to handle scrolling */
-    flex: 1 1 auto; /* Allow flexible sizing */
-    height: auto;
-    width: 100%; /* Ensure full width */
-    max-width: 100%; /* Prevent overflow */
+.tc-head,
+.tc-row {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
 }
 
-/* Specifically target any scroller that FullCalendar might add internally */
-.tasks-calendar-container .fc-scroller {
-    overflow: visible !important;
-    height: auto !important;
-    width: 100% !important;
-    max-width: 100% !important;
+/* With a week-number gutter the template gains a leading fixed column. */
+.tasks-calendar-container .tc-grid:has(.tc-weeknum) .tc-head,
+.tasks-calendar-container .tc-grid:has(.tc-weeknum) .tc-row {
+  grid-template-columns: var(--tasks-calendar-weeknum-width) repeat(7, minmax(0, 1fr));
 }
 
-/* Ensure day grid table is responsive */
-.tasks-calendar-container .fc-daygrid-body {
-    width: 100% !important;
-    table-layout: fixed; /* Equal column widths */
+/* The 3-day view has neither gutter nor seven columns. */
+.tc-grid[data-range='3day'] .tc-head,
+.tc-grid[data-range='3day'] .tc-row {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
-.tasks-calendar-container .fc-daygrid-day {
-    min-width: 0; /* Allow cells to shrink */
-    width: auto; /* Flexible cell width */
+.tc-weeknum {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 4px;
+  font-size: var(--font-ui-smaller);
+  color: var(--text-faint);
+  user-select: none;
 }
 
-/* Text color for general elements */
-.tasks-calendar-container .fc,
-.tasks-calendar-container .fc .fc-col-header-cell-cushion, /* Day headers (Mon, Tue) */
-.tasks-calendar-container .fc .fc-daygrid-day-number, /* Day numbers */
-.tasks-calendar-container .fc-toolbar-title /* Toolbar title */
-{
-  color: var(--text-normal);
+.tc-weekday {
+  padding: 4px 8px;
+  font-size: var(--font-ui-small);
+  font-weight: var(--font-medium);
+  color: var(--text-muted);
+  text-align: center;
+  user-select: none;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.tc-cell {
+  min-height: var(--tasks-calendar-cell-min-height);
+  padding: var(--tasks-calendar-day-cell-padding);
+  box-sizing: border-box;
+  border-right: 1px solid var(--background-modifier-border);
+  border-bottom: 1px solid var(--background-modifier-border);
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--tasks-calendar-event-margin);
+}
+
+.tc-cell:last-child {
+  border-right: none;
+}
+
+.tc-date-num {
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+  user-select: none;
+}
+
+.tc-other-month .tc-date-num {
+  opacity: 0.55;
 }
 
 /* Today's background color */
-.tasks-calendar-container .fc .fc-day-today {
+.tc-cell.tc-today {
   background-color: var(--tasks-calendar-today-bg);
 }
 
-/* Event styling - Base layout for ALL events */
-.tasks-calendar-container .fc-daygrid-event {
+.tc-cell.tc-today .tc-date-num {
+  color: var(--text-normal);
+  font-weight: var(--font-semibold);
+}
+
+.tc-events {
+  display: flex;
+  flex-direction: column;
+  gap: var(--tasks-calendar-event-margin);
+}
+
+/********************/
+/** Events        **/
+/********************/
+
+.tc-event {
   border-radius: var(--radius-s);
-  padding: 0; /* Padding is applied to inner element */
-  margin-bottom: var(--tasks-calendar-event-margin);
-  border: 1px solid transparent; /* Default border */
-}
-
-/* Event styling - Apply base styles */
-/* Increase specificity by adding .fc-daygrid-event */
-.tasks-calendar-container .fc-daygrid-event.task-incomplete,
-.tasks-calendar-container .fc-daygrid-event:not(.task-inprogress):not(.task-completed) /* Catch default state */
-{
-  background-color: var(--tasks-calendar-incomplete-bg);
-  border-color: var(--tasks-calendar-incomplete-border);
-  /* Removed margin, padding, border-radius from here */
-}
-
-/* Inner content base styles */
-/* Increase specificity */
-.tasks-calendar-container .fc-daygrid-event .fc-event-main
-{
+  border: 1px solid transparent;
   font-size: var(--tasks-calendar-font-size);
-  padding: var(--tasks-calendar-event-padding); /* Keep original general padding */
-  white-space: normal; /* Ensure wrapping */
+  padding: var(--tasks-calendar-event-padding);
+  white-space: normal;
   overflow-wrap: break-word;
-  height: auto; /* Ensure height adjusts */
-  overflow: visible; /* Ensure content visible */
-  text-decoration: none; /* Default no decoration */
-  opacity: 1; /* Default full opacity */
-  position: relative; /* Needed for absolute positioning of pseudo-element */
-  /* Removed padding-top for checkbox above */
-  color: var(--tasks-calendar-event-text-main); /* Apply the new default text color variable */
+  cursor: pointer;
+  user-select: none;
+  color: var(--tasks-calendar-event-text-main);
+  touch-action: pan-y; /* Vertical swipes scroll; drags start after long-press. */
 }
 
-/* Conditional RTL Styling */
-.tasks-calendar-container.tasks-calendar-rtl-enabled .fc-daygrid-event .fc-event-main {
-  /* RTL Support */
-  direction: rtl;
-  unicode-bidi: embed;
-  text-align: start;
+.tc-file-name {
+  display: block;
+  font-weight: normal;
+  opacity: 0.75;
 }
 
-/* === Status Specific Styling === */
-
-/* Incomplete tasks intentionally have no text-color rule of their own: they
-   inherit --tasks-calendar-event-text-main like every other status. Forcing
-   var(--text-normal) here used to put near-white text on the fixed pastel blue
-   background in dark mode. */
-
-/* Style the task description to be normal weight */
-.tasks-calendar-event .task-description {
-  font-weight: normal !important;
+.task-description {
+  font-weight: normal;
 }
 
-/* Ensure all task content is normal weight */
-.tasks-calendar-container .fc-daygrid-event.task-incomplete .fc-event-main,
-.tasks-calendar-container .fc-daygrid-event.task-inprogress .fc-event-main,
-.tasks-calendar-container .fc-daygrid-event.task-completed .fc-event-main {
-  font-weight: normal !important;
-}
+/* Status styling */
 
-/* Incomplete Tasks (Default) */
-.tasks-calendar-container .fc-daygrid-event.task-incomplete,
-.tasks-calendar-container .fc-daygrid-event:not(.task-inprogress):not(.task-completed) {
+.tc-event.task-incomplete {
   background-color: var(--tasks-calendar-incomplete-bg);
   border-color: var(--tasks-calendar-incomplete-border);
 }
 
-/* In-Progress Tasks */
-.tasks-calendar-container .fc-daygrid-event.task-inprogress {
+.tc-event.task-inprogress {
   background-color: var(--tasks-calendar-inprogress-bg);
   border-color: var(--tasks-calendar-inprogress-border);
-  opacity: 1;
 }
 
-.tasks-calendar-container .fc-daygrid-event.task-inprogress .fc-event-main {
-  text-decoration: none;
-}
-
-/* Completed Tasks */
-.tasks-calendar-container .fc-daygrid-event.task-completed {
+.tc-event.task-completed {
   background-color: var(--tasks-calendar-completed-bg);
   border-color: var(--tasks-calendar-completed-border);
 }
 
-/* The fade applies to the text only. Applying it to the whole event dimmed the
-   text on top of the strikethrough, which is what made completed tasks hard to
-   read; the border and background now stay solid. */
-.tasks-calendar-container .fc-daygrid-event.task-completed .fc-event-main {
+/* The fade applies to the text only: dimming the whole event made completed
+   tasks hard to read on top of the strikethrough. */
+.tc-event.task-completed .task-description {
   text-decoration: var(--tasks-calendar-completed-text-decoration);
   color: color-mix(
     in srgb,
@@ -363,43 +337,69 @@ body {
   );
 }
 
-/***************************/
-/** Drag & Drop Behavior **/
-/***************************/
+/****************************/
+/** File headers           **/
+/****************************/
 
-/* Minimal drag positioning fixes - work with FullCalendar's positioning */
-.tasks-calendar-container .fc-event-dragging {
-  z-index: 9999 !important;
-  pointer-events: none !important;
+.tc-file-header {
+  background: none;
+  border: none;
+  padding: 2px 0;
+  margin-top: 4px;
+  font-weight: 600;
+  color: var(--text-normal);
+  text-align: left;
+  cursor: pointer;
+  user-select: none;
 }
 
-.tasks-calendar-container .fc-event-dragging .fc-event-main {
-  pointer-events: none !important;
+.tc-file-header:hover,
+.tc-file-header:focus-visible {
+  color: var(--text-accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
-/* Fix drag mirror positioning without breaking FullCalendar's calculations */
-.tasks-calendar-container .fc-event-mirror {
-  z-index: 9999 !important;
-  pointer-events: none !important;
-  opacity: 0.8 !important;
-  box-shadow: var(--shadow-s) !important;
+.tc-file-header .task-count {
+  font-size: 0.9em;
+  opacity: 0.7;
+  font-weight: normal;
 }
 
-/* Improve drag feedback */
-.tasks-calendar-container .fc-event-selected {
-  box-shadow: var(--shadow-s) !important;
+/********************/
+/** Drag & drop    **/
+/********************/
+
+/* While dragging, cells stop intercepting pointer events so elementFromPoint
+   reaches the cells beneath the ghost. */
+.tc-is-dragging .tc-event {
+  cursor: grabbing;
 }
 
-/*************************/
-/** Inline Navigation **/
-/*************************/
-
-/* Hide default FullCalendar toolbar */
-.tasks-calendar-container .fc .fc-toolbar {
-  display: none;
+.tc-event:active {
+  cursor: grabbing;
 }
 
-/* Custom Inline Navigation Bar */
+.tc-ghost {
+  position: fixed;
+  z-index: 99999;
+  pointer-events: none;
+  opacity: 0.85;
+  box-shadow: var(--shadow-s);
+  transform: rotate(2deg);
+  max-width: 220px;
+}
+
+.tc-drop-target {
+  outline: 2px dashed var(--interactive-accent);
+  outline-offset: -3px;
+  background-color: var(--text-selection);
+}
+
+/*********************/
+/** Inline nav      **/
+/*********************/
+
 .tasks-calendar-inline-nav {
   display: flex;
   align-items: center;
@@ -411,7 +411,6 @@ body {
   margin-bottom: 8px;
 }
 
-/* Navigation Title (Center) */
 .tasks-calendar-inline-nav .nav-title {
   font-size: var(--font-ui-large);
   font-weight: var(--font-semibold);
@@ -421,14 +420,12 @@ body {
   user-select: none;
 }
 
-/* Navigation Controls (Left & Right) */
 .tasks-calendar-inline-nav .nav-controls {
   display: flex;
   align-items: center;
   gap: 12px;
 }
 
-/* Navigation Links */
 .tasks-calendar-inline-nav .nav-link {
   color: var(--text-muted);
   text-decoration: none;
@@ -453,7 +450,6 @@ body {
   font-weight: var(--font-medium);
 }
 
-/* Navigation Arrows */
 .tasks-calendar-inline-nav .nav-arrow {
   color: var(--text-muted);
   cursor: pointer;
@@ -480,7 +476,6 @@ body {
   background-color: var(--text-selection);
 }
 
-/* Today Button */
 .tasks-calendar-inline-nav .nav-today {
   font-size: var(--font-ui-smaller);
   color: var(--text-accent);
@@ -495,213 +490,63 @@ body {
   background-color: var(--text-selection);
 }
 
-/* Separator */
 .tasks-calendar-inline-nav .nav-separator {
   color: var(--text-faint);
   margin: 0 4px;
 }
 
-/* Add more specific overrides below if needed */
+/***********************/
+/** RTL               **/
+/***********************/
 
-/* Responsive Design */
+.tasks-calendar-rtl-enabled .tc-event,
+.tasks-calendar-rtl-enabled .tc-file-header {
+  direction: rtl;
+  unicode-bidi: embed;
+  text-align: start;
+}
+
+/***********************/
+/** Responsive        **/
+/***********************/
+
 @media (max-width: 768px) {
-  .tasks-calendar-container .fc .fc-button {
-    padding: 3px 6px;
-    font-size: calc(var(--font-ui-small) - 1px);
-    min-height: 20px;
+  .tasks-calendar-inline-nav {
+    flex-direction: column;
+    gap: 12px;
+    padding-top: 12px;
+    padding-bottom: 12px;
   }
-  
-  .tasks-calendar-container .fc-daygrid-event .fc-event-main {
-    padding: 1px 4px;
+
+  .tasks-calendar-inline-nav .nav-controls {
+    justify-content: center;
+    width: 100%;
+  }
+
+  .tasks-calendar-container .tc-event {
     font-size: calc(var(--tasks-calendar-font-size) - 1px);
+    padding: calc(var(--tasks-calendar-event-padding) / 2) calc(var(--tasks-calendar-event-padding) / 2 + 1px);
+  }
+
+  /* Plugin variables live on body (see above), so the override must too. */
+  body {
+    --tasks-calendar-cell-min-height: 72px;
   }
 }
 
-/* Accessibility */
-.tasks-calendar-container .fc-daygrid-event:focus,
-.tasks-calendar-container .fc .fc-button:focus {
+/**********************/
+/** Accessibility    **/
+/**********************/
+
+.tc-event:focus-visible,
+.nav-link:focus-visible,
+.nav-arrow:focus-visible {
   outline: 2px solid var(--color-accent);
   outline-offset: 2px;
 }
 
-/* High contrast mode support */
 @media (prefers-contrast: high) {
-  .tasks-calendar-container .fc-daygrid-event {
+  .tc-event {
     border-width: 2px;
   }
-  
-  .tasks-calendar-container .fc .fc-button {
-    border-width: 2px;
-    font-weight: var(--font-bold);
-  }
-}
-
-/**************************************/
-/** Container Query Optimizations   **/
-/**************************************/
-
-/* Container query optimizations for different sizes */
-@container (min-width: 500px) {
-  .tasks-calendar-container .fc-daygrid-event .fc-event-main {
-    padding: calc(var(--tasks-calendar-event-padding) * 1.2);
-    font-size: var(--tasks-calendar-font-size);
-  }
-}
-
-@container (min-width: 700px) {
-  .tasks-calendar-container {
-    min-height: 650px !important;
-  }
-  
-  .tasks-calendar-container .fc {
-    min-height: 600px !important;
-  }
-}
-
-/* Modern CSS containment for better performance and stability */
-.tasks-calendar-container:has(.fc) {
-  min-height: 600px !important;
-  display: flex !important;
-  flex-direction: column !important;
-  contain: layout size style !important;
-}
-
-/* Force proper sizing when calendar is being initialized */
-.tasks-calendar-container .fc:not(.fc-unthemed) {
-  min-height: 550px !important;
-  flex-basis: auto !important;
-  flex-grow: 1 !important;
-}
-
-/* Intrinsic sizing fallback for older browsers */
-.tasks-calendar-container {
-  height: fit-content;
-  height: -moz-fit-content;
-  height: -webkit-fit-content;
-  min-height: max(600px, 40vh) !important;
-}
-
-/* Ensure calendar never collapses during DOM mutations */
-.tasks-calendar-container .fc-view {
-  min-height: inherit !important;
-  flex-grow: 1 !important;
-}
-
-/***********************/
-/** Responsive Design **/
-/***********************/
-
-/* Media query for smaller screens (e.g., mobile) */
-@media (max-width: 768px) {
-  /* Stack navigation controls vertically on small screens */
-  .tasks-calendar-inline-nav {
-    flex-direction: column;
-    gap: 12px; /* Add space between stacked elements */
-    padding-top: 12px;
-    padding-bottom: 12px;
-  }
-  
-  /* Center the control groups */
-  .tasks-calendar-inline-nav .nav-controls {
-    justify-content: center;
-    width: 100%; /* Ensure they take up full width to center properly */
-  }
-  
-  .tasks-calendar-container .fc .fc-button {
-    padding: 6px 10px;
-    font-size: var(--font-ui-small);
-  }
-  .tasks-calendar-container .fc-daygrid-event .fc-event-main {
-    font-size: 11px; /* Even smaller on mobile */
-  }
-}
-
-/***********************/
-/**  Accessibility  **/
-/***********************/
-
-/* Focus styles for events */
-.tasks-calendar-container .fc-daygrid-event:focus {
-  outline: 2px solid var(--interactive-accent);
-}
-
-/* File Header Styles */
-.tasks-calendar-container .fc-daygrid-event.task-file-header {
-  background-color: transparent !important;
-  border: none !important;
-  border-radius: 0 !important;
-  box-shadow: none !important;
-  padding: 0 !important;
-  margin: 8px 4px 4px 4px !important;
-  cursor: pointer; /* Clicking the header opens the note */
-}
-
-.tasks-calendar-container .fc-daygrid-event.task-file-header .fc-event-main {
-  background-color: transparent !important;
-  border: none !important;
-  border-radius: 0 !important;
-  font-weight: 600 !important;
-  color: var(--text-normal) !important;
-  text-align: left !important;
-  opacity: 1 !important;
-  padding: 2px 0 !important;
-  box-shadow: none !important;
-  cursor: pointer !important;
-}
-
-/* RTL support for file headers */
-.tasks-calendar-container.tasks-calendar-rtl-enabled .fc-daygrid-event.task-file-header {
-  margin: 8px 4px 4px 4px !important; /* Same margins for RTL */
-}
-
-.tasks-calendar-container.tasks-calendar-rtl-enabled .fc-daygrid-event.task-file-header .fc-event-main {
-  direction: rtl !important;
-  unicode-bidi: embed !important;
-  text-align: start !important;
-}
-
-/* Headers open their note on click, so give them a link-like affordance.
-   The !important flags are needed to beat the base header rules above, which
-   force a transparent background and --text-normal with !important. */
-.tasks-calendar-container .fc-daygrid-event.task-file-header:hover .fc-event-main,
-.tasks-calendar-container .fc-daygrid-event.task-file-header:focus .fc-event-main {
-  color: var(--text-accent) !important;
-  text-decoration: underline !important;
-  text-underline-offset: 2px;
-  cursor: pointer !important;
-}
-
-/* Task count indicator in file headers */
-.tasks-calendar-file-header .task-count {
-  font-size: 0.9em;
-  opacity: 0.7;
-  font-weight: normal;
-}
-
-/* Headers are not draggable (handleEventDrop reverts them), but they are
-   clickable, so the cursor stays a pointer rather than reverting to default. */
-.tasks-calendar-container .fc-daygrid-event.task-file-header,
-.tasks-calendar-container .fc-daygrid-event.task-file-header .fc-event-main {
-  cursor: pointer !important;
-}
-
-/* Ensure regular tasks have proper indentation relative to file headers */
-.tasks-calendar-container .fc-daygrid-event.task-incomplete,
-.tasks-calendar-container .fc-daygrid-event.task-inprogress,
-.tasks-calendar-container .fc-daygrid-event.task-completed {
-  margin-left: 4px;
-  margin-right: 4px;
-  margin-top: 2px;
-  margin-bottom: 2px;
-  font-weight: normal !important; /* Ensure tasks are not bold */
-}
-
-/* RTL support for task indentation */
-.tasks-calendar-container.tasks-calendar-rtl-enabled .fc-daygrid-event.task-incomplete,
-.tasks-calendar-container.tasks-calendar-rtl-enabled .fc-daygrid-event.task-inprogress,
-.tasks-calendar-container.tasks-calendar-rtl-enabled .fc-daygrid-event.task-completed {
-  margin-left: 4px;
-  margin-right: 4px;
-  margin-top: 2px;
-  margin-bottom: 2px;
 }
