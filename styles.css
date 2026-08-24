@@ -395,6 +395,12 @@ body {
   background-color: var(--text-selection);
 }
 
+/* The source pill leaves its cell while its ghost is in flight; restored on
+   abort, left hidden on commit until the rescan repaints it elsewhere. */
+.tc-event.tc-drag-source {
+  display: none;
+}
+
 /*********************/
 /** Inline nav      **/
 /*********************/

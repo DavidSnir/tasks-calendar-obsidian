@@ -231,16 +231,23 @@ function attachDragging(root: HTMLElement, opts: DragOptions): () => void {
     if (!active) return;
 
     const { taskId, origin, fromDate, lastTargetDate, moved } = active;
+    const willDrop = commit && !!lastTargetDate && lastTargetDate !== fromDate;
     active.ghost.remove();
     clearCells();
     active = null;
+
+    // The source pill hid itself on drag start. Bring it back unless the
+    // drop is being committed: then the rescan repaints it into the new
+    // cell, with no flash of it snapping home first.
+    if (!willDrop) origin.removeClass('tc-drag-source');
+
     // Only a real drag suppresses the trailing click; a plain tap or a
     // press-release-in-place must still toggle status.
     if (moved) origin.addClass('tc-click-suppressed');
 
-    if (commit && lastTargetDate && lastTargetDate !== fromDate) {
+    if (willDrop) {
       pulse(HAPTIC_DROP_MS);
-      opts.onDrop(taskId, fromDate, lastTargetDate);
+      opts.onDrop(taskId, fromDate, lastTargetDate!);
     }
   };
 
@@ -308,6 +315,9 @@ function attachDragging(root: HTMLElement, opts: DragOptions): () => void {
       lastTargetDate: null,
       moved: false,
     };
+    // The pill leaves its cell while the ghost is in flight (user request):
+    // a hidden source is the clearest "this task is moving" indicator.
+    eventEl.addClass('tc-drag-source');
     opts.onDragStart();
     pulse(HAPTIC_DRAG_START_MS);
     onPointerMove(evt);
